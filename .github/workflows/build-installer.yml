@@ -18,27 +18,100 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
+      - name: Locate Godot project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Write-Host "Searching repository for project.godot..."
+
+          $projects = @(
+            Get-ChildItem `
+              -Path "$env:GITHUB_WORKSPACE" `
+              -Filter "project.godot" `
+              -File `
+              -Recurse `
+              -ErrorAction Stop |
+            Where-Object {
+              $_.FullName -notmatch "\\tools\\" -and
+              $_.FullName -notmatch "\\\.git\\"
+            }
+          )
+
+          if ($projects.Count -eq 0) {
+            Write-Host ""
+            Write-Host "Repository contents:"
+            Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Force
+            throw "No project.godot file was found anywhere in the repository."
+          }
+
+          if ($projects.Count -gt 1) {
+            Write-Host "Found multiple Godot projects:"
+            $projects | ForEach-Object { Write-Host " - $($_.FullName)" }
+            throw "More than one project.godot was found. Keep only the Trump Simulator project in this repository."
+          }
+
+          $projectFile = $projects[0]
+          $projectDir = $projectFile.Directory.FullName
+
+          Write-Host ""
+          Write-Host "Found Trump Simulator project:"
+          Write-Host "  $projectDir"
+
+          "PROJECT_DIR=$projectDir" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify required project files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Write-Host "Project directory:"
+          Write-Host "  $env:PROJECT_DIR"
+
+          $required = @(
+            "project.godot",
+            "export_presets.cfg",
+            "installer\TrumpSimulator.iss",
+            "installer\UPDATE_NOTES.txt"
+          )
+
+          foreach ($item in $required) {
+            $path = Join-Path $env:PROJECT_DIR $item
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Required project file is missing: $path"
+            }
+            Write-Host "[OK] $item"
+          }
+
       - name: Download Godot 4.7.1 and export templates
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          New-Item -ItemType Directory -Force -Path tools\godot | Out-Null
-          New-Item -ItemType Directory -Force -Path tools\templates | Out-Null
+          $toolsDir = Join-Path $env:GITHUB_WORKSPACE "_build_tools"
+          $godotDir = Join-Path $toolsDir "godot"
+          $templatesDir = Join-Path $toolsDir "templates"
+
+          New-Item -ItemType Directory -Force -Path $godotDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $templatesDir | Out-Null
+
+          $godotZip = Join-Path $toolsDir "godot.zip"
+          $templatesZip = Join-Path $toolsDir "export_templates.tpz"
 
           $godotUrl = "https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable/Godot_v4.7.1-stable_win64.exe.zip"
           $templatesUrl = "https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable/Godot_v4.7.1-stable_export_templates.tpz"
 
           Write-Host "Downloading Godot..."
-          Invoke-WebRequest -Uri $godotUrl -OutFile tools\godot.zip
+          Invoke-WebRequest -Uri $godotUrl -OutFile $godotZip
 
           Write-Host "Downloading export templates..."
-          Invoke-WebRequest -Uri $templatesUrl -OutFile tools\export_templates.tpz
+          Invoke-WebRequest -Uri $templatesUrl -OutFile $templatesZip
 
-          Expand-Archive -Path tools\godot.zip -DestinationPath tools\godot -Force
-          Expand-Archive -Path tools\export_templates.tpz -DestinationPath tools\templates -Force
+          Expand-Archive -Path $godotZip -DestinationPath $godotDir -Force
+          Expand-Archive -Path $templatesZip -DestinationPath $templatesDir -Force
 
-          $godotExe = Get-ChildItem tools\godot -Filter "Godot*.exe" -Recurse |
+          $godotExe = Get-ChildItem $godotDir -Filter "Godot*.exe" -Recurse |
             Where-Object { $_.Name -notmatch "_console" } |
             Select-Object -First 1
 
@@ -46,12 +119,13 @@ jobs:
             throw "Godot executable was not found after extraction."
           }
 
-          "GODOT_EXE=$($godotExe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GODOT_EXE=$($godotExe.FullName)" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
           $templateDir = Join-Path $env:APPDATA "Godot\export_templates\4.7.1.stable"
           New-Item -ItemType Directory -Force -Path $templateDir | Out-Null
 
-          $templateFiles = Get-ChildItem tools\templates -File -Recurse
+          $templateFiles = Get-ChildItem $templatesDir -File -Recurse
           if (-not $templateFiles) {
             throw "No export-template files were found."
           }
@@ -60,18 +134,31 @@ jobs:
             Copy-Item $file.FullName -Destination (Join-Path $templateDir $file.Name) -Force
           }
 
-          Write-Host "Installed templates to $templateDir"
-          & $godotExe.FullName --version
+          Write-Host "Installed templates to:"
+          Write-Host "  $templateDir"
+
+          $process = Start-Process `
+            -FilePath $godotExe.FullName `
+            -ArgumentList @("--version") `
+            -NoNewWindow `
+            -Wait `
+            -PassThru
+
+          if ($process.ExitCode -ne 0) {
+            throw "Godot --version failed with exit code $($process.ExitCode)."
+          }
 
       - name: Import project and check scripts
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Write-Host "Importing project..."
+
+          Write-Host "Importing project from:"
+          Write-Host "  $env:PROJECT_DIR"
 
           $godotArgs = @(
             "--headless",
-            "--path", "$env:GITHUB_WORKSPACE",
+            "--path", "$env:PROJECT_DIR",
             "--editor",
             "--quit-after", "3"
           )
@@ -95,15 +182,27 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Force -Path build | Out-Null
+
+          Set-Location -LiteralPath "$env:PROJECT_DIR"
+
+          $buildDir = Join-Path $env:PROJECT_DIR "build"
+          $exePath = Join-Path $buildDir "TrumpSimulator.exe"
+
+          New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+
+          if (Test-Path -LiteralPath $exePath) {
+            Remove-Item -LiteralPath $exePath -Force
+          }
 
           Write-Host "Exporting Windows Desktop release..."
+          Write-Host "Project: $env:PROJECT_DIR"
+          Write-Host "Output:  $exePath"
 
           $exportArgs = @(
             "--headless",
-            "--path", "$env:GITHUB_WORKSPACE",
+            "--path", "$env:PROJECT_DIR",
             "--export-release", "Windows Desktop",
-            "build\TrumpSimulator.exe"
+            "$exePath"
           )
 
           $process = Start-Process `
@@ -119,12 +218,13 @@ jobs:
             throw "Godot Windows export failed with exit code $($process.ExitCode)."
           }
 
-          if (-not (Test-Path "build\TrumpSimulator.exe")) {
-            throw "Godot exited successfully but did not create build\TrumpSimulator.exe."
+          if (-not (Test-Path -LiteralPath $exePath)) {
+            throw "Godot exited successfully but did not create $exePath."
           }
 
           Write-Host "Game export succeeded."
-          Get-Item "build\TrumpSimulator.exe" | Format-List FullName,Length,LastWriteTime
+          Get-Item -LiteralPath $exePath |
+            Format-List FullName,Length,LastWriteTime
 
       - name: Find Inno Setup
         shell: pwsh
@@ -136,7 +236,9 @@ jobs:
             "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
           )
 
-          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          $iscc = $candidates |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
 
           if (-not $iscc) {
             $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
@@ -149,23 +251,43 @@ jobs:
             throw "Inno Setup compiler ISCC.exe was not found on the Windows runner."
           }
 
-          "ISCC_EXE=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Inno Setup: $iscc"
+          "ISCC_EXE=$iscc" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "Inno Setup:"
+          Write-Host "  $iscc"
 
       - name: Compile official installer
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Force -Path release | Out-Null
 
-          & "$env:ISCC_EXE" "installer\TrumpSimulator.iss"
+          Set-Location -LiteralPath "$env:PROJECT_DIR"
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup failed with exit code $LASTEXITCODE."
+          $issPath = Join-Path $env:PROJECT_DIR "installer\TrumpSimulator.iss"
+          $releaseDir = Join-Path $env:PROJECT_DIR "release"
+          $setupPath = Join-Path $releaseDir "TrumpSimulatorSetup.exe"
+
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+
+          Write-Host "Compiling:"
+          Write-Host "  $issPath"
+
+          $process = Start-Process `
+            -FilePath "$env:ISCC_EXE" `
+            -ArgumentList @("$issPath") `
+            -NoNewWindow `
+            -Wait `
+            -PassThru
+
+          Write-Host "Inno Setup exit code: $($process.ExitCode)"
+
+          if ($process.ExitCode -ne 0) {
+            throw "Inno Setup failed with exit code $($process.ExitCode)."
           }
 
-          if (-not (Test-Path "release\TrumpSimulatorSetup.exe")) {
-            throw "Installer compiler finished, but release\TrumpSimulatorSetup.exe was not created."
+          if (-not (Test-Path -LiteralPath $setupPath)) {
+            throw "Installer compiler finished, but $setupPath was not created."
           }
 
           Write-Host "Installer compiled successfully."
@@ -175,9 +297,14 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          $installerPath = "release\TrumpSimulatorSetup.exe"
+          Set-Location -LiteralPath "$env:PROJECT_DIR"
+
+          $installerPath = Join-Path $env:PROJECT_DIR "release\TrumpSimulatorSetup.exe"
+          $manifestPath = Join-Path $env:PROJECT_DIR "release\update.json"
+          $notesPath = Join-Path $env:PROJECT_DIR "installer\UPDATE_NOTES.txt"
+
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installerPath).Hash.ToLower()
-          $notes = (Get-Content -Raw "installer\UPDATE_NOTES.txt").Trim()
+          $notes = (Get-Content -Raw -LiteralPath $notesPath).Trim()
 
           $manifest = [ordered]@{
             version = "1.0.0"
@@ -188,31 +315,52 @@ jobs:
             published_at = (Get-Date).ToUniversalTime().ToString("o")
           }
 
-          $manifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "release\update.json"
+          $manifest |
+            ConvertTo-Json -Depth 4 |
+            Set-Content -Encoding utf8 -LiteralPath $manifestPath
 
           Write-Host "SHA-256: $hash"
-          Write-Host "Generated release\update.json"
+          Write-Host "Generated:"
+          Write-Host "  $manifestPath"
 
-      - name: Create release ZIP
+      - name: Prepare downloadable artifact
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          if (Test-Path "release\TrumpSimulator_1.0_Windows.zip") {
-            Remove-Item "release\TrumpSimulator_1.0_Windows.zip" -Force
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "_finished_installer"
+          $releaseDir = Join-Path $env:PROJECT_DIR "release"
+
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          Copy-Item `
+            -LiteralPath (Join-Path $releaseDir "TrumpSimulatorSetup.exe") `
+            -Destination $artifactDir `
+            -Force
+
+          Copy-Item `
+            -LiteralPath (Join-Path $releaseDir "update.json") `
+            -Destination $artifactDir `
+            -Force
+
+          $zipPath = Join-Path $artifactDir "TrumpSimulator_1.0_Windows.zip"
+          if (Test-Path -LiteralPath $zipPath) {
+            Remove-Item -LiteralPath $zipPath -Force
           }
 
           Compress-Archive `
-            -Path "release\TrumpSimulatorSetup.exe","release\update.json" `
-            -DestinationPath "release\TrumpSimulator_1.0_Windows.zip"
+            -Path (Join-Path $artifactDir "TrumpSimulatorSetup.exe"),(Join-Path $artifactDir "update.json") `
+            -DestinationPath $zipPath
+
+          Write-Host ""
+          Write-Host "Finished files:"
+          Get-ChildItem -LiteralPath $artifactDir |
+            Format-Table Name,Length
 
       - name: Upload finished installer
         uses: actions/upload-artifact@v4
         with:
           name: TrumpSimulator-1.0-Windows-Installer
-          path: |
-            release/TrumpSimulatorSetup.exe
-            release/update.json
-            release/TrumpSimulator_1.0_Windows.zip
+          path: _finished_installer/*
           if-no-files-found: error
           retention-days: 30
