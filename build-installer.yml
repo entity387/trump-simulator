@@ -1,0 +1,185 @@
+name: Build Trump Simulator 1.0 Installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    name: Build Windows Installer
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download Godot 4.7.1 and export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          New-Item -ItemType Directory -Force -Path tools\godot | Out-Null
+          New-Item -ItemType Directory -Force -Path tools\templates | Out-Null
+
+          $godotUrl = "https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable/Godot_v4.7.1-stable_win64.exe.zip"
+          $templatesUrl = "https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable/Godot_v4.7.1-stable_export_templates.tpz"
+
+          Write-Host "Downloading Godot..."
+          Invoke-WebRequest -Uri $godotUrl -OutFile tools\godot.zip
+
+          Write-Host "Downloading export templates..."
+          Invoke-WebRequest -Uri $templatesUrl -OutFile tools\export_templates.tpz
+
+          Expand-Archive -Path tools\godot.zip -DestinationPath tools\godot -Force
+          Expand-Archive -Path tools\export_templates.tpz -DestinationPath tools\templates -Force
+
+          $godotExe = Get-ChildItem tools\godot -Filter "Godot*.exe" -Recurse |
+            Where-Object { $_.Name -notmatch "_console" } |
+            Select-Object -First 1
+
+          if (-not $godotExe) {
+            throw "Godot executable was not found after extraction."
+          }
+
+          "GODOT_EXE=$($godotExe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $templateDir = Join-Path $env:APPDATA "Godot\export_templates\4.7.1.stable"
+          New-Item -ItemType Directory -Force -Path $templateDir | Out-Null
+
+          $templateFiles = Get-ChildItem tools\templates -File -Recurse
+          if (-not $templateFiles) {
+            throw "No export-template files were found."
+          }
+
+          foreach ($file in $templateFiles) {
+            Copy-Item $file.FullName -Destination (Join-Path $templateDir $file.Name) -Force
+          }
+
+          Write-Host "Installed templates to $templateDir"
+          & $godotExe.FullName --version
+
+      - name: Import project and check scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "Importing project..."
+          & "$env:GODOT_EXE" --headless --path "$env:GITHUB_WORKSPACE" --editor --quit-after 3
+          if ($LASTEXITCODE -ne 0) {
+            throw "Godot project import/script check failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Export Windows game
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+
+          Write-Host "Exporting Windows Desktop release..."
+          & "$env:GODOT_EXE" --headless --path "$env:GITHUB_WORKSPACE" --export-release "Windows Desktop" "build\TrumpSimulator.exe"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Godot Windows export failed with exit code $LASTEXITCODE."
+          }
+
+          if (-not (Test-Path "build\TrumpSimulator.exe")) {
+            throw "Godot did not create build\TrumpSimulator.exe."
+          }
+
+          Write-Host "Game export succeeded."
+          Get-Item "build\TrumpSimulator.exe" | Format-List FullName,Length,LastWriteTime
+
+      - name: Find Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          )
+
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $iscc) {
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) {
+              $iscc = $cmd.Source
+            }
+          }
+
+          if (-not $iscc) {
+            throw "Inno Setup compiler ISCC.exe was not found on the Windows runner."
+          }
+
+          "ISCC_EXE=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Inno Setup: $iscc"
+
+      - name: Compile official installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+
+          & "$env:ISCC_EXE" "installer\TrumpSimulator.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE."
+          }
+
+          if (-not (Test-Path "release\TrumpSimulatorSetup.exe")) {
+            throw "Installer compiler finished, but release\TrumpSimulatorSetup.exe was not created."
+          }
+
+          Write-Host "Installer compiled successfully."
+
+      - name: Generate website update manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $installerPath = "release\TrumpSimulatorSetup.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installerPath).Hash.ToLower()
+          $notes = (Get-Content -Raw "installer\UPDATE_NOTES.txt").Trim()
+
+          $manifest = [ordered]@{
+            version = "1.0.0"
+            download_url = "https://trumpsimulator.xyz/downloads/TrumpSimulatorSetup.exe"
+            sha256 = $hash
+            required = $false
+            notes = $notes
+            published_at = (Get-Date).ToUniversalTime().ToString("o")
+          }
+
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "release\update.json"
+
+          Write-Host "SHA-256: $hash"
+          Write-Host "Generated release\update.json"
+
+      - name: Create release ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if (Test-Path "release\TrumpSimulator_1.0_Windows.zip") {
+            Remove-Item "release\TrumpSimulator_1.0_Windows.zip" -Force
+          }
+
+          Compress-Archive `
+            -Path "release\TrumpSimulatorSetup.exe","release\update.json" `
+            -DestinationPath "release\TrumpSimulator_1.0_Windows.zip"
+
+      - name: Upload finished installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrumpSimulator-1.0-Windows-Installer
+          path: |
+            release/TrumpSimulatorSetup.exe
+            release/update.json
+            release/TrumpSimulator_1.0_Windows.zip
+          if-no-files-found: error
+          retention-days: 30
