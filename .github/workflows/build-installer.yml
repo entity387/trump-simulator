@@ -137,12 +137,15 @@ jobs:
           Write-Host "Installed templates to:"
           Write-Host "  $templateDir"
 
-          $process = Start-Process `
-            -FilePath $godotExe.FullName `
-            -ArgumentList @("--version") `
-            -NoNewWindow `
-            -Wait `
-            -PassThru
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $godotExe.FullName
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $false
+          $psi.RedirectStandardError = $false
+          $psi.ArgumentList.Add("--version")
+
+          $process = [System.Diagnostics.Process]::Start($psi)
+          $process.WaitForExit()
 
           if ($process.ExitCode -ne 0) {
             throw "Godot --version failed with exit code $($process.ExitCode)."
@@ -156,19 +159,25 @@ jobs:
           Write-Host "Importing project from:"
           Write-Host "  $env:PROJECT_DIR"
 
-          $godotArgs = @(
-            "--headless",
-            "--path", "$env:PROJECT_DIR",
-            "--editor",
-            "--quit-after", "3"
-          )
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = "$env:GODOT_EXE"
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $false
+          $psi.RedirectStandardError = $false
 
-          $process = Start-Process `
-            -FilePath "$env:GODOT_EXE" `
-            -ArgumentList $godotArgs `
-            -NoNewWindow `
-            -Wait `
-            -PassThru
+          foreach ($arg in @(
+            "--headless",
+            "--path",
+            "$env:PROJECT_DIR",
+            "--editor",
+            "--quit-after",
+            "3"
+          )) {
+            $psi.ArgumentList.Add($arg)
+          }
+
+          $process = [System.Diagnostics.Process]::Start($psi)
+          $process.WaitForExit()
 
           Write-Host "Godot import exit code: $($process.ExitCode)"
 
@@ -226,21 +235,38 @@ jobs:
           Write-Host "Log:     $exportLog"
           Write-Host ""
 
-          $exportArgs = @(
+          # IMPORTANT: ProcessStartInfo.ArgumentList preserves "Windows Desktop"
+          # as ONE argument. Start-Process -ArgumentList can split it at the space.
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = "$env:GODOT_EXE"
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+
+          foreach ($arg in @(
             "--headless",
             "--verbose",
-            "--path", "$env:PROJECT_DIR",
-            "--export-release", "Windows Desktop",
+            "--path",
+            "$env:PROJECT_DIR",
+            "--export-release",
+            "Windows Desktop",
             "$exePath"
-          )
+          )) {
+            $psi.ArgumentList.Add($arg)
+          }
 
-          $process = Start-Process `
-            -FilePath "$env:GODOT_EXE" `
-            -ArgumentList $exportArgs `
-            -RedirectStandardOutput "$exportLog.stdout" `
-            -RedirectStandardError "$exportLog.stderr" `
-            -Wait `
-            -PassThru
+          $process = [System.Diagnostics.Process]::Start($psi)
+
+          # Read asynchronously before WaitForExit to avoid pipe deadlocks.
+          $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+          $stderrTask = $process.StandardError.ReadToEndAsync()
+          $process.WaitForExit()
+
+          $stdout = $stdoutTask.GetAwaiter().GetResult()
+          $stderr = $stderrTask.GetAwaiter().GetResult()
+
+          $stdout | Set-Content -LiteralPath "$exportLog.stdout" -Encoding utf8
+          $stderr | Set-Content -LiteralPath "$exportLog.stderr" -Encoding utf8
 
           # Merge both streams into one diagnostic log.
           @(
@@ -326,12 +352,15 @@ jobs:
           Write-Host "Compiling:"
           Write-Host "  $issPath"
 
-          $process = Start-Process `
-            -FilePath "$env:ISCC_EXE" `
-            -ArgumentList @("$issPath") `
-            -NoNewWindow `
-            -Wait `
-            -PassThru
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = "$env:ISCC_EXE"
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $false
+          $psi.RedirectStandardError = $false
+          $psi.ArgumentList.Add("$issPath")
+
+          $process = [System.Diagnostics.Process]::Start($psi)
+          $process.WaitForExit()
 
           Write-Host "Inno Setup exit code: $($process.ExitCode)"
 
