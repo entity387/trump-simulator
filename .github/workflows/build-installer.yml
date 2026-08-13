@@ -187,19 +187,48 @@ jobs:
 
           $buildDir = Join-Path $env:PROJECT_DIR "build"
           $exePath = Join-Path $buildDir "TrumpSimulator.exe"
+          $logDir = Join-Path $env:GITHUB_WORKSPACE "_build_logs"
+          $exportLog = Join-Path $logDir "godot-export.log"
+          $templateDir = Join-Path $env:APPDATA "Godot\export_templates\4.7.1.stable"
+          $releaseTemplate = Join-Path $templateDir "windows_release_x86_64.exe"
 
           New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
           if (Test-Path -LiteralPath $exePath) {
             Remove-Item -LiteralPath $exePath -Force
           }
+          if (Test-Path -LiteralPath $exportLog) {
+            Remove-Item -LiteralPath $exportLog -Force
+          }
 
+          Write-Host "Checking Windows export template..."
+          Write-Host "Expected:"
+          Write-Host "  $releaseTemplate"
+
+          if (-not (Test-Path -LiteralPath $releaseTemplate)) {
+            Write-Host ""
+            Write-Host "Files actually installed in template directory:"
+            if (Test-Path -LiteralPath $templateDir) {
+              Get-ChildItem -LiteralPath $templateDir -Force |
+                Format-Table Name,Length
+            } else {
+              Write-Host "Template directory does not exist."
+            }
+            throw "Godot Windows release export template is missing."
+          }
+
+          Write-Host "[OK] Windows release export template found."
+          Write-Host ""
           Write-Host "Exporting Windows Desktop release..."
           Write-Host "Project: $env:PROJECT_DIR"
           Write-Host "Output:  $exePath"
+          Write-Host "Log:     $exportLog"
+          Write-Host ""
 
           $exportArgs = @(
             "--headless",
+            "--verbose",
             "--path", "$env:PROJECT_DIR",
             "--export-release", "Windows Desktop",
             "$exePath"
@@ -208,17 +237,41 @@ jobs:
           $process = Start-Process `
             -FilePath "$env:GODOT_EXE" `
             -ArgumentList $exportArgs `
-            -NoNewWindow `
+            -RedirectStandardOutput "$exportLog.stdout" `
+            -RedirectStandardError "$exportLog.stderr" `
             -Wait `
             -PassThru
 
+          # Merge both streams into one diagnostic log.
+          @(
+            "===== GODOT STDOUT ====="
+            if (Test-Path "$exportLog.stdout") { Get-Content -LiteralPath "$exportLog.stdout" }
+            ""
+            "===== GODOT STDERR ====="
+            if (Test-Path "$exportLog.stderr") { Get-Content -LiteralPath "$exportLog.stderr" }
+          ) | Set-Content -LiteralPath $exportLog -Encoding utf8
+
           Write-Host "Godot export exit code: $($process.ExitCode)"
+          Write-Host ""
 
           if ($process.ExitCode -ne 0) {
+            Write-Host "======================================================"
+            Write-Host "GODOT EXPORT FAILED - IMPORTANT LOG OUTPUT"
+            Write-Host "======================================================"
+            Write-Host ""
+
+            Get-Content -LiteralPath $exportLog -Tail 200
+
+            Write-Host ""
+            Write-Host "======================================================"
+            Write-Host "A full godot-export.log will also be uploaded."
+            Write-Host "======================================================"
+
             throw "Godot Windows export failed with exit code $($process.ExitCode)."
           }
 
           if (-not (Test-Path -LiteralPath $exePath)) {
+            Get-Content -LiteralPath $exportLog -Tail 200
             throw "Godot exited successfully but did not create $exePath."
           }
 
@@ -356,6 +409,15 @@ jobs:
           Write-Host "Finished files:"
           Get-ChildItem -LiteralPath $artifactDir |
             Format-Table Name,Length
+
+      - name: Upload build diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrumpSimulator-Build-Diagnostics
+          path: _build_logs/*
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload finished installer
         uses: actions/upload-artifact@v4
