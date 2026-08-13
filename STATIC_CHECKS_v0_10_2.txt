@@ -1,0 +1,12 @@
+PASS - Version 0.10.2
+PASS - Simulated Studios loading branding
+PASS - Main menu says CREDITS
+PASS - Scarlett credited
+PASS - Peyton credited
+PASS - Leon credited as Biden
+PASS - No music credit
+PASS - Original assets notice
+PASS - Original sound notice
+PASS - Open-source licences button
+PASS - Godot licence retained
+PASS - No duplicate functions

@@ -1,0 +1,13 @@
+PASS - Version 0.9.0
+PASS - No duplicate functions
+PASS - Startup does not build procedural office
+PASS - Button click signal
+PASS - Phone click signal
+PASS - Paper click signal
+PASS - No Space launch
+PASS - Small button
+PASS - Seated background exists
+PASS - Preview exists
+PASS - Parentheses balanced
+PASS - Brackets balanced
+PASS - Braces balanced

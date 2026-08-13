@@ -1,0 +1,5 @@
+PASS - Version 0.7.0
+PASS - Space launch removed
+PASS - Seated camera
+PASS - Smaller button
+PASS - Visibility helper

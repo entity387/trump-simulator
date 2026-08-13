@@ -1,0 +1,38 @@
+; Trump Simulator Desktop Edition
+; Trump Simulator 1.0.0 Official Release
+config_version=5
+
+[application]
+config/name="Trump Simulator"
+config/description="A satirical desk-clicking chaos game."
+config/version="1.0.0"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7")
+
+[autoload]
+
+OnlineMultiplayer="*res://scripts/online/online_multiplayer.gd"
+UpdateManager="*res://scripts/update_manager.gd"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2
+
+[audio]
+driver/enable_input=false
+
+[trump_simulator]
+
+multiplayer/join_code_api="http://127.0.0.1:8787"
+multiplayer/allow_solo_test=true
+update/current_version="1.0.0"
+update/manifest_url="https://trumpsimulator.xyz/update.json"
+update/check_in_editor=false

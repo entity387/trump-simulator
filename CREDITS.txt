@@ -1,0 +1,57 @@
+TRUMP SIMULATOR
+A Simulated Studios Game
+
+Created by
+Scarlett Doughty
+
+Game Design
+Scarlett Doughty
+Peyton Bailey
+
+Original Concept & Game Ideas
+Peyton Bailey
+
+Programming & Development
+Scarlett Doughty
+Simulated Studios
+
+Writing & Dialogue
+Scarlett Doughty
+Peyton Bailey
+
+Multiplayer Concepts & Design
+Peyton Bailey
+Scarlett Doughty
+
+Environment & Level Design
+Simulated Studios
+
+UI Design
+Simulated Studios
+
+VOICE CAST
+Trump — Scarlett Doughty
+Putin — Scarlett Doughty
+Kim Jong Un — Scarlett Doughty
+Xi Jinping — Peyton Bailey
+Lil Timmy — Peyton Bailey
+Biden — Leon Havey
+
+Sound Design & Effects
+All sound effects and recorded dialogue are original content produced for Trump Simulator.
+
+Music
+No music is used in Trump Simulator.
+
+Artwork & Assets
+All game artwork and assets are original project content created for Trump Simulator.
+
+Special Thanks
+Playtesters
+Everyone who helped test the game and gave feedback.
+
+Technology
+Made with Godot Engine.
+
+Thanks for playing Trump Simulator.
+— Simulated Studios

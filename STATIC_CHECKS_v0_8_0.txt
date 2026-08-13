@@ -1,0 +1,8 @@
+PASS - Version 0.8.0
+PASS - HUD passes clicks
+PASS - Viewport picking enabled
+PASS - Direct ray click
+PASS - No Space launch
+PASS - Graphics GLBs referenced
+PASS - No duplicate functions
+PASS - Exactly one phone builder

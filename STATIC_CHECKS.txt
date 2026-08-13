@@ -1,0 +1,9 @@
+has_ready: PASS
+has_save_load: PASS
+has_full_stage5: PASS
+has_full_stage6: PASS
+has_clickable_paperwork: PASS
+has_six_difficulties: PASS
+parentheses_count_balanced: PASS
+square_brackets_count_balanced: PASS
+installer_guid_is_hex: PASS

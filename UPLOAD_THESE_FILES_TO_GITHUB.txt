@@ -1,0 +1,44 @@
+TRUMP SIMULATOR — GITHUB PROJECT FILES
+
+Your GitHub Actions log showed that the repository currently contains only:
+
+  .git
+  .github
+
+That means the actual Godot project is missing.
+
+UPLOAD INSTRUCTIONS
+
+1. Extract TrumpSimulator_GitHub_ProjectFiles.zip.
+2. Open the extracted TrumpSimulator_GitHub_ProjectFiles folder.
+3. Select ALL files and folders INSIDE that folder.
+4. Upload them to the ROOT of your existing GitHub repository.
+
+DO NOT create another wrapper folder in GitHub.
+
+When finished, the repository root should visibly contain things such as:
+
+  project.godot
+  export_presets.cfg
+  scripts/
+  installer/
+  legal/
+  config/
+  assets/ or media folders used by the project
+  .github/
+
+The .github folder is already in your repository, so this upload package
+deliberately does not contain it.
+
+IMPORTANT:
+The file project.godot must be visible on the main repository page at the same
+level as the .github folder.
+
+After uploading and committing everything:
+
+  Actions
+  -> Build Trump Simulator 1.0 Installer
+  -> Run workflow
+
+The workflow will then be able to find project.godot and continue to the
+actual Godot export stage.

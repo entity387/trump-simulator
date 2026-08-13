@@ -1,0 +1,16 @@
+PASS - Version 0.11.0
+PASS - Multiplayer main-menu button
+PASS - Arena script
+PASS - Debate room is 3D
+PASS - Crisis room is 3D
+PASS - Trump model
+PASS - Biden model
+PASS - Moderator model
+PASS - Audience models
+PASS - All crisis roles are Trump
+PASS - Role camera support
+PASS - Audience seat view
+PASS - Launch + Intercept controls
+PASS - Dev instant multiplayer
+PASS - No duplicate main functions
+PASS - No duplicate arena functions

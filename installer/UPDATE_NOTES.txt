@@ -1,0 +1,9 @@
+Trump Simulator 1.0 official release.
+
+• Full linear campaign
+• Multiplayer Crisis Room and Presidential Debate foundations
+• 3D multiplayer maps and role viewpoints
+• Join-code/EOS online multiplayer foundation
+• Secret developer tools
+• Official Windows installer
+• Automatic website update checker

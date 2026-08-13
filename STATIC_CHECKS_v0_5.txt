@@ -1,0 +1,7 @@
+PASS - VERSION v0.5
+PASS - diegetic builder called
+PASS - command monitor label
+PASS - threat monitor label
+PASS - upgrade terminal click
+PASS - upgrade panel hidden default
+PASS - no duplicate funcs

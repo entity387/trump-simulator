@@ -1,0 +1,7 @@
+PASS - VERSION 0.6
+PASS - Camera-built office
+PASS - Textures referenced
+PASS - Diegetic UI retained
+PASS - Core launch retained
+PASS - Godot project present
+PASS - Installer source present

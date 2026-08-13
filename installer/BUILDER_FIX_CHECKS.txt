@@ -1,0 +1,10 @@
+PASS - Auto-detect Godot from PATH
+PASS - Search Downloads
+PASS - Search Desktop
+PASS - Manual drag/paste fallback
+PASS - Validates Godot exists
+PASS - Writes build log
+PASS - Captures Godot export errors
+PASS - Checks Inno Setup
+PASS - Builds installer
+PASS - Creates update manifest

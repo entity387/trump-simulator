@@ -1,0 +1,8 @@
+PASS - Version 0.6.4
+PASS - Loading screen builder
+PASS - Progress updater
+PASS - Loading finish fade
+PASS - Main menu hidden during load
+PASS - Camera still current
+PASS - Office build retained
+PASS - Diegetic UI retained

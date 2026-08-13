@@ -1,0 +1,117 @@
+{
+  "version": "0.4.0",
+  "edition": "Desktop",
+  "no_web_cap": true,
+  "stages": [
+    {
+      "id": 1,
+      "min": 0,
+      "name": "THE BUTTON"
+    },
+    {
+      "id": 2,
+      "min": 60,
+      "name": "ENEMIES WAKE UP"
+    },
+    {
+      "id": 3,
+      "min": 200,
+      "name": "THE PHONE"
+    },
+    {
+      "id": 4,
+      "min": 700,
+      "name": "MULTITASKING"
+    },
+    {
+      "id": 5,
+      "min": 2500,
+      "name": "CRISIS MANAGEMENT"
+    },
+    {
+      "id": 6,
+      "min": 10000,
+      "name": "ABSOLUTE CHAOS"
+    }
+  ],
+  "difficulties": [
+    {
+      "name": "Intern",
+      "enemy": 0.55,
+      "events": 0.55,
+      "heat": 0.65,
+      "chaos": 0.65
+    },
+    {
+      "name": "President",
+      "enemy": 1.0,
+      "events": 1.0,
+      "heat": 1.0,
+      "chaos": 1.0
+    },
+    {
+      "name": "Commander in Chief",
+      "enemy": 1.35,
+      "events": 1.35,
+      "heat": 1.25,
+      "chaos": 1.25
+    },
+    {
+      "name": "DEFCON 1",
+      "enemy": 1.7,
+      "events": 1.75,
+      "heat": 1.5,
+      "chaos": 1.55
+    },
+    {
+      "name": "Presidential Nightmare",
+      "enemy": 2.25,
+      "events": 2.35,
+      "heat": 1.85,
+      "chaos": 2.0
+    },
+    {
+      "name": "IMPOSSIBLE",
+      "enemy": 3.2,
+      "events": 3.5,
+      "heat": 2.4,
+      "chaos": 3.0
+    }
+  ],
+  "upgrades": [
+    {
+      "id": "reinforced_button",
+      "name": "Reinforced Button",
+      "cost": 100,
+      "power_add": 1
+    },
+    {
+      "id": "gold_actuator",
+      "name": "Gold-Plated Actuator",
+      "cost": 350,
+      "power_add": 3
+    },
+    {
+      "id": "executive_authority",
+      "name": "Executive Launch Authority",
+      "cost": 1200,
+      "power_add": 8
+    },
+    {
+      "id": "desk_reinforcement",
+      "name": "Desk Reinforcement",
+      "cost": 4000,
+      "power_add": 20
+    },
+    {
+      "id": "presidential_hydraulics",
+      "name": "Presidential Hydraulics",
+      "cost": 12000,
+      "power_add": 50
+    }
+  ],
+  "settings_defaults": {
+    "subtitles": false,
+    "difficulty_index": 1
+  }
+}

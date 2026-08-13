@@ -1,0 +1,7 @@
+PASS - Import uses Start-Process
+PASS - Import uses real process ExitCode
+PASS - Export uses process exit code
+PASS - No LASTEXITCODE in Godot import/export
+PASS - Still exports TrumpSimulator.exe
+PASS - Still compiles installer
+PASS - Still uploads artifact

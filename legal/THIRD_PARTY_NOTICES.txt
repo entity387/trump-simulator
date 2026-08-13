@@ -1,0 +1,20 @@
+TRUMP SIMULATOR — THIRD-PARTY NOTICES
+
+Studio: Simulated Studios
+
+CURRENT CONTENT POLICY FOR THIS PROJECT
+- All game artwork and visual assets are original project content created for Trump Simulator.
+- All sound effects and recorded dialogue are original content produced for Trump Simulator.
+- No music is used in Trump Simulator.
+- No third-party game art, sound effects, music, models, or fonts are currently used.
+
+OPEN-SOURCE SOFTWARE
+- Trump Simulator uses the Godot Engine.
+- The Godot Engine MIT License is included separately in GODOT_LICENSE.txt.
+
+If any third-party content is added in the future, this file must be updated before release.
+
+OPTIONAL ONLINE MULTIPLAYER DEPENDENCY
+- Epic Online Services Godot (EOSG) is a community MIT-licensed Godot plugin used for EOS integration when installed.
+- EOSG is not bundled in this source package; install it separately from the Godot Asset Library or its official repository.
+- Epic Online Services is provided by Epic Games under its own terms.

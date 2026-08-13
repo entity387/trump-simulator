@@ -1,0 +1,13 @@
+PASS - Publisher is Simulated Studios
+PASS - Version is 0.10.2
+PASS - Program Files install location
+PASS - Desktop shortcut automatic
+PASS - Start Menu shortcut
+PASS - Uninstaller shortcut
+PASS - Launch after install
+PASS - Setup icon exists
+PASS - Godot legal file included
+PASS - Credits included
+PASS - Full build BAT exists
+PASS - Installer-only BAT exists
+PASS - Website-compatible setup filename

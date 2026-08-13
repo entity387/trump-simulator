@@ -1,0 +1,9 @@
+PASS - Windows 2025 runner
+PASS - Manual run supported
+PASS - Godot 4.7.1 download
+PASS - Export templates download
+PASS - Windows export
+PASS - Inno Setup compilation
+PASS - Installer existence check
+PASS - SHA-256 manifest
+PASS - Artifact upload v4

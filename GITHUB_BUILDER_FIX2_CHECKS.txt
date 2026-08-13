@@ -1,0 +1,9 @@
+PASS - Finds project.godot recursively
+PASS - Requires exactly one project
+PASS - Sets PROJECT_DIR
+PASS - Verifies export preset
+PASS - Imports real project path
+PASS - Exports with absolute exe path
+PASS - Runs Inno inside project
+PASS - Copies installer to fixed artifact dir
+PASS - Artifact uploader fixed path

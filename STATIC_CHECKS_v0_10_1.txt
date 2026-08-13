@@ -1,0 +1,20 @@
+PASS - Version 0.10.1
+PASS - No full-screen campaign map asset paths
+PASS - Old baked map directory removed
+PASS - Runtime map root
+PASS - Apply level builds environment
+PASS - Putin built from nodes
+PASS - UNICEF built from nodes
+PASS - UN meeting built from nodes
+PASS - Air Force One built from nodes
+PASS - Rally built from nodes
+PASS - G20 built from nodes
+PASS - Bunker built from nodes
+PASS - Golf built from nodes
+PASS - Nightmare built from nodes
+PASS - Interactive button separate
+PASS - Interactive phone separate
+PASS - Interactive paperwork separate
+PASS - Dev instant map loader retained
+PASS - No duplicate functions
+PASS - Built preview exists

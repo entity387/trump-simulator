@@ -1,0 +1,89 @@
+extends Node
+
+var peer
+var local_product_user_id: String = ""
+
+func initialize_and_login_async(credentials: Dictionary) -> bool:
+	var init_options = EOS.Platform.InitializeOptions.new()
+	init_options.product_name = str(credentials.get("product_name", "Trump Simulator"))
+	init_options.product_version = str(credentials.get("product_version", "0.12.0"))
+
+	var init_result = EOS.Platform.PlatformInterface.initialize(init_options)
+	if init_result != EOS.Result.Success:
+		printerr("EOS initialize failed: ", EOS.result_str(init_result))
+		return false
+
+	var create_options = EOS.Platform.CreateOptions.new()
+	create_options.product_id = str(credentials.get("product_id", ""))
+	create_options.sandbox_id = str(credentials.get("sandbox_id", ""))
+	create_options.deployment_id = str(credentials.get("deployment_id", ""))
+	create_options.client_id = str(credentials.get("client_id", ""))
+	create_options.client_secret = str(credentials.get("client_secret", ""))
+	create_options.encryption_key = str(credentials.get("encryption_key", ""))
+
+	EOS.Platform.PlatformInterface.create(create_options)
+
+	var device_options = EOS.Connect.CreateDeviceIdOptions.new()
+	device_options.device_model = OS.get_name() + " " + OS.get_model_name()
+	EOS.Connect.ConnectInterface.create_device_id(device_options)
+	await EOS.get_instance().connect_interface_create_device_id_callback
+
+	var connect_credentials = EOS.Connect.Credentials.new()
+	connect_credentials.token = null
+	connect_credentials.type = EOS.ExternalCredentialType.DeviceidAccessToken
+
+	var login_options = EOS.Connect.LoginOptions.new()
+	login_options.credentials = connect_credentials
+
+	var user_info = EOS.Connect.UserLoginInfo.new()
+	user_info.display_name = "Trump Simulator Player"
+	login_options.user_login_info = user_info
+
+	EOS.Connect.ConnectInterface.login(login_options)
+	var login_data = await EOS.get_instance().connect_interface_login_callback
+
+	if typeof(login_data) == TYPE_ARRAY and login_data.size() > 0:
+		login_data = login_data[0]
+
+	if typeof(login_data) != TYPE_DICTIONARY:
+		printerr("EOS Connect login returned unexpected data.")
+		return false
+
+	if not bool(login_data.get("success", false)):
+		printerr("EOS Connect login failed: ", login_data)
+		return false
+
+	local_product_user_id = str(login_data.get("local_user_id", ""))
+	if local_product_user_id.is_empty():
+		return false
+
+	peer = EOSGMultiplayerPeer.new()
+	return true
+
+func create_server_peer(socket_id: String) -> int:
+	if peer == null:
+		peer = EOSGMultiplayerPeer.new()
+	return peer.create_server(socket_id)
+
+func create_client_peer(socket_id: String, remote_user_id: String) -> int:
+	if peer == null:
+		peer = EOSGMultiplayerPeer.new()
+	return peer.create_client(socket_id, remote_user_id)
+
+func get_peer():
+	return peer
+
+func get_local_product_user_id() -> String:
+	return local_product_user_id
+
+func close_peer() -> void:
+	if peer != null:
+		peer.close()
+
+# Voice is wired here later through EOS Lobby RTC / RTCAudio.
+# Keeping these methods means the rest of the game already has a stable API.
+func set_push_to_talk(_active: bool) -> void:
+	pass
+
+func set_remote_muted(_product_user_id: String, _muted: bool) -> void:
+	pass

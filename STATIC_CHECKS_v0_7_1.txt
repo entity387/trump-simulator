@@ -1,0 +1,6 @@
+PASS - Version 0.7.1
+PASS - Exactly one _build_phone
+PASS - No duplicate function declarations
+PASS - Seated camera retained
+PASS - Small clickable button retained
+PASS - Space launch still removed

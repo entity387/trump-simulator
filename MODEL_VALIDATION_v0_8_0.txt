@@ -1,0 +1,8 @@
+PASS - resolute_desk.glb - 25,964 bytes
+PASS - button_base.glb - 10,192 bytes
+PASS - button_cap.glb - 98,616 bytes
+PASS - desk_phone.glb - 66,860 bytes
+PASS - curtain_set.glb - 76,780 bytes
+PASS - fireplace.glb - 33,964 bytes
+PASS - monitor_shell.glb - 6,516 bytes
+PASS - desk_lamp.glb - 10,156 bytes
