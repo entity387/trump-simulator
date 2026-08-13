@@ -68,10 +68,28 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           Write-Host "Importing project..."
-          & "$env:GODOT_EXE" --headless --path "$env:GITHUB_WORKSPACE" --editor --quit-after 3
-          if ($LASTEXITCODE -ne 0) {
-            throw "Godot project import/script check failed with exit code $LASTEXITCODE."
+
+          $godotArgs = @(
+            "--headless",
+            "--path", "$env:GITHUB_WORKSPACE",
+            "--editor",
+            "--quit-after", "3"
+          )
+
+          $process = Start-Process `
+            -FilePath "$env:GODOT_EXE" `
+            -ArgumentList $godotArgs `
+            -NoNewWindow `
+            -Wait `
+            -PassThru
+
+          Write-Host "Godot import exit code: $($process.ExitCode)"
+
+          if ($process.ExitCode -ne 0) {
+            throw "Godot project import/script check failed with exit code $($process.ExitCode)."
           }
+
+          Write-Host "Project import/script check passed."
 
       - name: Export Windows game
         shell: pwsh
@@ -80,14 +98,29 @@ jobs:
           New-Item -ItemType Directory -Force -Path build | Out-Null
 
           Write-Host "Exporting Windows Desktop release..."
-          & "$env:GODOT_EXE" --headless --path "$env:GITHUB_WORKSPACE" --export-release "Windows Desktop" "build\TrumpSimulator.exe"
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Godot Windows export failed with exit code $LASTEXITCODE."
+          $exportArgs = @(
+            "--headless",
+            "--path", "$env:GITHUB_WORKSPACE",
+            "--export-release", "Windows Desktop",
+            "build\TrumpSimulator.exe"
+          )
+
+          $process = Start-Process `
+            -FilePath "$env:GODOT_EXE" `
+            -ArgumentList $exportArgs `
+            -NoNewWindow `
+            -Wait `
+            -PassThru
+
+          Write-Host "Godot export exit code: $($process.ExitCode)"
+
+          if ($process.ExitCode -ne 0) {
+            throw "Godot Windows export failed with exit code $($process.ExitCode)."
           }
 
           if (-not (Test-Path "build\TrumpSimulator.exe")) {
-            throw "Godot did not create build\TrumpSimulator.exe."
+            throw "Godot exited successfully but did not create build\TrumpSimulator.exe."
           }
 
           Write-Host "Game export succeeded."
