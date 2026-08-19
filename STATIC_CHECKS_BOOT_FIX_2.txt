@@ -1,0 +1,11 @@
+PASS - manager is dynamic Variant
+PASS - role callback explicit Callable
+PASS - ready callback explicit Callable
+PASS - start callback explicit Callable
+PASS - player IDs explicitly typed
+PASS - no old manager Node declaration
+PASS - no dynamic manager := inference
+PASS - no duplicate functions
+PASS - balanced braces
+PASS - balanced brackets
+PASS - balanced parentheses

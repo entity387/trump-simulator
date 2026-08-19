@@ -29,7 +29,7 @@ for /f "delims=" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Algorit
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$notes=(Get-Content -Raw 'installer\UPDATE_NOTES.txt').Trim();" ^
-  "$manifest=[ordered]@{version='1.0.0';download_url='%TS_INSTALLER_URL%';sha256='%SETUP_SHA256%';required=$false;notes=$notes;published_at=(Get-Date).ToUniversalTime().ToString('o')};" ^
+  "$manifest=[ordered]@{version='1.1.0';download_url='%TS_INSTALLER_URL%';sha256='%SETUP_SHA256%';required=$false;notes=$notes;published_at=(Get-Date).ToUniversalTime().ToString('o')};" ^
   "$manifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 'release\update.json'"
 
 echo.

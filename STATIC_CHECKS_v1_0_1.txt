@@ -1,0 +1,24 @@
+PASS - Main multiplayer button opens hub
+PASS - Online Host/Join available inside hub
+PASS - Online UI blank-screen fallback present
+PASS - Audience camera raised
+PASS - Audience tier risers built
+PASS - Moderator camera raised
+PASS - Moderator monitor moved off centre
+PASS - Console buttons reduced
+PASS - Debate uses wood texture
+PASS - Crisis uses plaster/wood textures
+PASS - Online UI handles missing manager
+PASS - Background file exists
+PASS - Wood texture exists
+PASS - Rug texture exists
+PASS - Workflow checks multiplayer arena
+PASS - Workflow checks background
+PASS - Workflow checks multiplayer textures
+PASS - Project version 1.0.1
+PASS - Installer version 1.0.1
+PASS - Updater version 1.0.1
+PASS - Manifest build version 1.0.1
+PASS - No duplicate functions: scripts/main.gd
+PASS - No duplicate functions: scripts/multiplayer_arena.gd
+PASS - No duplicate functions: scripts/online/online_multiplayer_ui.gd

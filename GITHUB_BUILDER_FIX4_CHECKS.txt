@@ -1,0 +1,8 @@
+PASS - Uses ProcessStartInfo ArgumentList
+PASS - Windows Desktop preserved as explicit argument
+PASS - No Start-Process command remains
+PASS - Import project path safe
+PASS - Export output path safe
+PASS - Inno .iss path safe
+PASS - Diagnostics retained
+PASS - Final installer artifact retained

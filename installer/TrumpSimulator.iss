@@ -4,7 +4,7 @@
 ; Compile with Inno Setup 6.
 
 #define MyAppName "Trump Simulator"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Simulated Studios"
 #define MyAppExeName "TrumpSimulator.exe"
 #define MyAppSetupName "TrumpSimulatorSetup"

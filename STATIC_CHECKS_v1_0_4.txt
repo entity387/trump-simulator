@@ -1,0 +1,9 @@
+PASS - Version 1.0.4 in main
+PASS - Project version 1.0.4
+PASS - Updater 1.0.4
+PASS - Installer 1.0.4
+PASS - Workflow artifact 1.0.4
+PASS - Campaign goals exact
+PASS - Nightmare exactly 2 million
+PASS - Final jump under 50 percent
+PASS - Absolute chaos at 1.4m

@@ -1,9 +1,12 @@
-Trump Simulator 1.0 official release.
+Trump Simulator 1.1.0 final completion pass.
 
-• Full linear campaign
-• Multiplayer Crisis Room and Presidential Debate foundations
-• 3D multiplayer maps and role viewpoints
-• Join-code/EOS online multiplayer foundation
-• Secret developer tools
-• Official Windows installer
-• Automatic website update checker
+• Full-screen level intro cards added to all 10 campaign locations
+• Final level opens with “Good luck, Mr President.”
+• Campaign-complete saves no longer reopen a dead final level
+• Longer 30–40 second phone calls with dialogue throughout the call
+• Caller dialogue is shown on the desk phone even with subtitles disabled
+• Mirror gag restored to the Desktop Edition
+• Fullscreen toggle added to Settings
+• Multiplayer practice menus cleaned up for release
+• Final campaign-complete presentation improved
+• 2,000,000-launch Presidential Nightmare progression retained

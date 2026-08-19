@@ -1,0 +1,17 @@
+TRUMP SIMULATOR RELEASE UPLOAD
+
+After running installer\BUILD_OFFICIAL_INSTALLER.bat, upload:
+
+1. release\TrumpSimulatorSetup.exe
+   -> https://trumpsimulator.xyz/downloads/TrumpSimulatorSetup.exe
+
+2. release\update.json
+   -> https://trumpsimulator.xyz/update.json
+
+IMPORTANT:
+Upload the installer FIRST, then update.json LAST.
+
+Why?
+As soon as update.json advertises a newer version, installed games may begin
+downloading the installer URL. Uploading the manifest last ensures the new
+installer already exists before players are notified.

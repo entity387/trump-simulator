@@ -2,14 +2,14 @@ extends Node3D
 
 # ============================================================
 # TRUMP SIMULATOR — DESKTOP EDITION
-# v1.0.0 — official release + website update system
+# v1.1.0 — final completion and presentation pass
 #
 # The launch button remains the core gameplay action.
 # Everything else exists to interrupt, distract, or pressure
 # the player while they try to keep launching.
 # ============================================================
 
-const VERSION := "1.0.0"
+const VERSION := "1.1.0"
 const SAVE_PATH := "user://savegame.json"
 const SETTINGS_PATH := "user://settings.json"
 
@@ -23,11 +23,11 @@ const DEV_PIN := "1787"
 
 const STAGES := [
 	{"min": 0, "name": "THE BUTTON"},
-	{"min": 60, "name": "ENEMIES WAKE UP"},
-	{"min": 200, "name": "THE PHONE"},
-	{"min": 700, "name": "MULTITASKING"},
-	{"min": 2500, "name": "CRISIS MANAGEMENT"},
-	{"min": 10000, "name": "ABSOLUTE CHAOS"},
+	{"min": 10000, "name": "ENEMIES WAKE UP"},
+	{"min": 50000, "name": "THE PHONE"},
+	{"min": 200000, "name": "MULTITASKING"},
+	{"min": 650000, "name": "CRISIS MANAGEMENT"},
+	{"min": 1400000, "name": "ABSOLUTE CHAOS"},
 ]
 
 const DIFFICULTIES := [
@@ -41,16 +41,16 @@ const DIFFICULTIES := [
 
 # Campaign levels are linear. There is no normal level-select screen.
 const CAMPAIGN_LEVELS := [
-	{"id":"oval_office", "name":"OVAL OFFICE", "visual":"oval_office", "goal":2500, "stage_floor":1, "stage_ceiling":4, "enemy":0.85, "events":0.80, "heat":0.85, "chaos":0.75, "gimmick_interval":0.0, "button":[550,533], "phone":[175,490], "paper":[880,495], "emergency":[1000,500], "alarm":[405,515], "monitor":[505,321], "intro":"TRUMP STARTS AT THE OVAL OFFICE.", "gimmick":"Learn the button, threats, calls and paperwork."},
-	{"id":"putins_office", "name":"PUTIN'S OFFICE", "visual":"putins_office", "goal":3200, "stage_floor":2, "stage_ceiling":4, "enemy":1.00, "events":1.10, "heat":0.95, "chaos":0.90, "gimmick_interval":18.0, "button":[550,533], "phone":[855,535], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[70,315], "intro":"TRUMP ARRIVES IN MOSCOW. SOMEHOW.", "gimmick":"Russian intel and extra calls keep interrupting the desk."},
-	{"id":"unicef_office", "name":"UNICEF OFFICE", "visual":"unicef_office", "goal":3600, "stage_floor":2, "stage_ceiling":5, "enemy":0.95, "events":1.18, "heat":0.95, "chaos":1.00, "gimmick_interval":16.0, "button":[550,533], "phone":[865,535], "paper":[95,545], "emergency":[1015,520], "alarm":[405,535], "monitor":[90,310], "intro":"TRUMP VISITS THE UNICEF OFFICE. THE BUTTON CAME TOO.", "gimmick":"Staff requests and paperwork arrive constantly."},
-	{"id":"un_meeting", "name":"UN MEETING ROOM", "visual":"un_meeting", "goal":4200, "stage_floor":3, "stage_ceiling":5, "enemy":1.05, "events":1.25, "heat":1.00, "chaos":1.12, "gimmick_interval":14.0, "button":[550,536], "phone":[880,538], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[505,300], "intro":"TRUMP TAKES HIS SEAT AT THE UN MEETING.", "gimmick":"Delegates keep talking while the office systems keep demanding attention."},
-	{"id":"air_force_one", "name":"AIR FORCE ONE", "visual":"air_force_one", "goal":4800, "stage_floor":3, "stage_ceiling":5, "enemy":1.10, "events":1.18, "heat":1.08, "chaos":1.10, "gimmick_interval":12.0, "button":[550,533], "phone":[865,535], "paper":[90,545], "emergency":[1015,520], "alarm":[405,535], "monitor":[75,320], "intro":"TRUMP BOARDS AIR FORCE ONE.", "gimmick":"Turbulence periodically shakes the entire desk."},
-	{"id":"rally_backstage", "name":"CAMPAIGN RALLY BACKSTAGE", "visual":"rally_backstage", "goal":5500, "stage_floor":3, "stage_ceiling":6, "enemy":1.12, "events":1.28, "heat":1.08, "chaos":1.22, "gimmick_interval":13.0, "button":[550,533], "phone":[95,535], "paper":[885,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[875,300], "intro":"TRUMP HEADS BACKSTAGE AT THE RALLY.", "gimmick":"Crowd surges and staff interruptions push chaos upward."},
-	{"id":"g20_summit", "name":"G20 WORLD LEADERS SUMMIT", "visual":"g20_summit", "goal":6500, "stage_floor":4, "stage_ceiling":6, "enemy":1.18, "events":1.35, "heat":1.12, "chaos":1.25, "gimmick_interval":12.0, "button":[550,536], "phone":[880,538], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[505,300], "intro":"TRUMP TAKES THE UNITED STATES SEAT AT THE G20.", "gimmick":"World-leader requests arrive faster than anyone can answer them."},
-	{"id":"emergency_bunker", "name":"EMERGENCY BUNKER", "visual":"emergency_bunker", "goal":7500, "stage_floor":5, "stage_ceiling":6, "enemy":1.35, "events":1.32, "heat":1.18, "chaos":1.32, "gimmick_interval":10.0, "button":[550,533], "phone":[865,535], "paper":[90,545], "emergency":[1015,520], "alarm":[405,535], "monitor":[70,300], "intro":"TRUMP IS MOVED TO THE EMERGENCY BUNKER.", "gimmick":"Security alerts and system surges leave almost no downtime."},
-	{"id":"golf_club", "name":"GOLF CLUB OFFICE", "visual":"golf_club", "goal":8200, "stage_floor":4, "stage_ceiling":6, "enemy":1.15, "events":1.38, "heat":1.05, "chaos":1.18, "gimmick_interval":11.0, "button":[550,533], "phone":[875,535], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[75,315], "intro":"TRUMP ATTEMPTS TO WORK FROM THE GOLF CLUB.", "gimmick":"Calls, staff and tee-time distractions refuse to stop."},
-	{"id":"presidential_nightmare", "name":"PRESIDENTIAL NIGHTMARE", "visual":"presidential_nightmare", "goal":10000, "stage_floor":6, "stage_ceiling":6, "enemy":1.55, "events":1.55, "heat":1.28, "chaos":1.55, "gimmick_interval":8.0, "button":[550,533], "phone":[875,535], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[505,290], "intro":"TRUMP ENTERS THE PRESIDENTIAL NIGHTMARE.", "gimmick":"Every system from the campaign can collide at once."},
+	{"id":"oval_office", "name":"OVAL OFFICE", "visual":"oval_office", "goal":10000, "stage_floor":1, "stage_ceiling":4, "enemy":0.85, "events":0.80, "heat":0.85, "chaos":0.75, "gimmick_interval":0.0, "button":[550,533], "phone":[175,490], "paper":[880,495], "emergency":[1000,500], "alarm":[405,515], "monitor":[505,321], "intro":"TRUMP STARTS AT THE OVAL OFFICE.", "intro_message":"Welcome to the Oval Office.", "gimmick":"Learn the button, threats, calls and paperwork."},
+	{"id":"putins_office", "name":"PUTIN'S OFFICE", "visual":"putins_office", "goal":30000, "stage_floor":2, "stage_ceiling":4, "enemy":1.00, "events":1.10, "heat":0.95, "chaos":0.90, "gimmick_interval":18.0, "button":[550,533], "phone":[855,535], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[70,315], "intro":"TRUMP ARRIVES IN MOSCOW. SOMEHOW.", "intro_message":"He said not to touch anything.", "gimmick":"Russian intel and extra calls keep interrupting the desk."},
+	{"id":"unicef_office", "name":"UNICEF OFFICE", "visual":"unicef_office", "goal":75000, "stage_floor":2, "stage_ceiling":5, "enemy":0.95, "events":1.18, "heat":0.95, "chaos":1.00, "gimmick_interval":16.0, "button":[550,533], "phone":[865,535], "paper":[95,545], "emergency":[1015,520], "alarm":[405,535], "monitor":[90,310], "intro":"TRUMP VISITS THE UNICEF OFFICE. THE BUTTON CAME TOO.", "intro_message":"Please try to look helpful.", "gimmick":"Staff requests and paperwork arrive constantly."},
+	{"id":"un_meeting", "name":"UN MEETING ROOM", "visual":"un_meeting", "goal":150000, "stage_floor":3, "stage_ceiling":5, "enemy":1.05, "events":1.25, "heat":1.00, "chaos":1.12, "gimmick_interval":14.0, "button":[550,536], "phone":[880,538], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[505,300], "intro":"TRUMP TAKES HIS SEAT AT THE UN MEETING.", "intro_message":"Diplomacy is strongly encouraged.", "gimmick":"Delegates keep talking while the office systems keep demanding attention."},
+	{"id":"air_force_one", "name":"AIR FORCE ONE", "visual":"air_force_one", "goal":275000, "stage_floor":3, "stage_ceiling":5, "enemy":1.10, "events":1.18, "heat":1.08, "chaos":1.10, "gimmick_interval":12.0, "button":[550,533], "phone":[865,535], "paper":[90,545], "emergency":[1015,520], "alarm":[405,535], "monitor":[75,320], "intro":"TRUMP BOARDS AIR FORCE ONE.", "intro_message":"Please remain seated. Especially you.", "gimmick":"Turbulence periodically shakes the entire desk."},
+	{"id":"rally_backstage", "name":"CAMPAIGN RALLY BACKSTAGE", "visual":"rally_backstage", "goal":450000, "stage_floor":3, "stage_ceiling":6, "enemy":1.12, "events":1.28, "heat":1.08, "chaos":1.22, "gimmick_interval":13.0, "button":[550,533], "phone":[95,535], "paper":[885,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[875,300], "intro":"TRUMP HEADS BACKSTAGE AT THE RALLY.", "intro_message":"They're chanting your name. Probably.", "gimmick":"Crowd surges and staff interruptions push chaos upward."},
+	{"id":"g20_summit", "name":"G20 WORLD LEADERS SUMMIT", "visual":"g20_summit", "goal":700000, "stage_floor":4, "stage_ceiling":6, "enemy":1.18, "events":1.35, "heat":1.12, "chaos":1.25, "gimmick_interval":12.0, "button":[550,536], "phone":[880,538], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[505,300], "intro":"TRUMP TAKES THE UNITED STATES SEAT AT THE G20.", "intro_message":"Try to remember everyone's name.", "gimmick":"World-leader requests arrive faster than anyone can answer them."},
+	{"id":"emergency_bunker", "name":"EMERGENCY BUNKER", "visual":"emergency_bunker", "goal":1000000, "stage_floor":5, "stage_ceiling":6, "enemy":1.35, "events":1.32, "heat":1.18, "chaos":1.32, "gimmick_interval":10.0, "button":[550,533], "phone":[865,535], "paper":[90,545], "emergency":[1015,520], "alarm":[405,535], "monitor":[70,300], "intro":"TRUMP IS MOVED TO THE EMERGENCY BUNKER.", "intro_message":"If you're here, something has already gone wrong.", "gimmick":"Security alerts and system surges leave almost no downtime."},
+	{"id":"golf_club", "name":"GOLF CLUB OFFICE", "visual":"golf_club", "goal":1400000, "stage_floor":4, "stage_ceiling":6, "enemy":1.15, "events":1.38, "heat":1.05, "chaos":1.18, "gimmick_interval":11.0, "button":[550,533], "phone":[875,535], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[75,315], "intro":"TRUMP ATTEMPTS TO WORK FROM THE GOLF CLUB.", "intro_message":"Finally. A completely normal workplace.", "gimmick":"Calls, staff and tee-time distractions refuse to stop."},
+	{"id":"presidential_nightmare", "name":"PRESIDENTIAL NIGHTMARE", "visual":"presidential_nightmare", "goal":2000000, "stage_floor":6, "stage_ceiling":6, "enemy":1.55, "events":1.55, "heat":1.28, "chaos":1.55, "gimmick_interval":8.0, "button":[550,533], "phone":[875,535], "paper":[90,545], "emergency":[1020,520], "alarm":[405,535], "monitor":[505,290], "intro":"TRUMP ENTERS THE PRESIDENTIAL NIGHTMARE.", "intro_message":"Good luck, Mr President.", "gimmick":"Every system from the campaign can collide at once."},
 ]
 
 const UPGRADES := [
@@ -74,6 +74,42 @@ const AMBIENT_LINES := [
 
 const CALLERS := ["KIM", "PUTIN", "XI", "LIL TIMMY"]
 
+const CALL_SCRIPTS := {
+	"KIM": [
+		"Hello, Donald. I have also found a button.",
+		"Mine is red too. Very nice.",
+		"I pressed it once. Everyone started yelling.",
+		"Are we competing? I think we are competing.",
+		"This is becoming a competition.",
+	],
+	"PUTIN": [
+		"I have prepared a very short presentation.",
+		"It is only forty-seven slides.",
+		"I think you should stop funding Ukraine.",
+		"You could spend the money on something much more useful.",
+		"Like a very large desk.",
+		"Or perhaps another button. You like buttons, yes?",
+	],
+	"XI": [
+		"你好，唐纳德。",
+		"我不知道你为什么一直按那个按钮。",
+		"但是看起来很忙。",
+		"你应该休息一下。",
+		"冰淇淋。非常好。",
+		"好了，我还有事情要做。再见。",
+	],
+	"LIL TIMMY": [
+		"Hey!",
+		"What are you doing?",
+		"Why is there a giant red button on your desk?",
+		"It says launch bombs.",
+		"That's weird.",
+		"Anyway, today at school we learned about fractions.",
+		"I don't really understand fractions.",
+		"Okay bye.",
+	],
+}
+
 # ----------------------------
 # Persistent game state
 # ----------------------------
@@ -83,6 +119,7 @@ var power := 1
 var stage := 1
 var difficulty_index := 1
 var subtitles_enabled := false
+var fullscreen_enabled := false
 var purchased_upgrades: Array[String] = []
 var current_level_index: int = 0
 var level_launches: int = 0
@@ -105,6 +142,8 @@ var button_busy := false
 var call_active := false
 var call_answered := false
 var active_caller := ""
+var active_call_line := ""
+var call_line_index: int = 0
 var call_locks_button := false
 var call_seconds_left := 0
 var ambient_resume_after_msec: int = 0
@@ -122,6 +161,8 @@ var last_launch_time := 0.0
 var last_stage_seen := 1
 var autosave_accum := 0.0
 var level_transition_active := false
+var level_intro_active := false
+var level_intro_token: int = 0
 var level_gimmick_accum := 0.0
 
 # Developer-session state never writes over the player's normal campaign save.
@@ -218,6 +259,12 @@ var level_complete_panel: Panel
 var level_complete_title: Label
 var level_complete_body: Label
 var level_complete_button: Button
+var level_intro_root: Control
+var level_intro_bg: ColorRect
+var level_intro_title: Label
+var level_intro_message: Label
+var mirror_overlay: Control
+var mirror_image: TextureRect
 
 var dev_code_panel: Panel
 var dev_code_input: LineEdit
@@ -243,6 +290,7 @@ var chaos_bar: ProgressBar
 var continue_button: Button
 var difficulty_button: Button
 var subtitle_toggle_button: Button
+var fullscreen_toggle_button: Button
 var startup_label: Label
 var fallback_bg: ColorRect
 var loading_root: Control
@@ -299,6 +347,7 @@ var visual_root_home := Vector2.ZERO
 var event_timer: Timer
 var call_ring_timer: Timer
 var call_duration_timer: Timer
+var call_line_timer: Timer
 var paper_timer: Timer
 var crisis_timer: Timer
 var alarm_timer: Timer
@@ -309,6 +358,7 @@ func _ready() -> void:
 	last_launch_time = Time.get_ticks_msec() / 1000.0
 	print("[Trump Simulator] v", VERSION, " startup")
 	_load_settings()
+	_apply_window_mode()
 
 	# Build screen-space UI first so a 3D startup failure can never leave
 	# the player staring at an unexplained blank/grey engine window.
@@ -377,7 +427,7 @@ func _set_startup_step(step_text: String) -> void:
 
 func _process(delta: float) -> void:
 	_refresh_menu_backdrop()
-	if not world_ready or not game_started or paused or game_over:
+	if not world_ready or not game_started or paused or game_over or level_intro_active:
 		return
 
 	autosave_accum += delta
@@ -458,14 +508,18 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not world_ready:
 		return
+	if level_intro_active:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key_event: InputEventKey = event as InputEventKey
 		if key_event.keycode == KEY_U:
 			_toggle_upgrade_terminal()
 		elif key_event.keycode == KEY_ESCAPE:
-			if level_complete_panel != null and level_complete_panel.visible:
+			if mirror_overlay != null and mirror_overlay.visible:
+				_close_mirror()
+			elif level_complete_panel != null and level_complete_panel.visible:
 				return
-			if difficulty_select_panel != null and difficulty_select_panel.visible:
+			elif difficulty_select_panel != null and difficulty_select_panel.visible:
 				_close_new_game_difficulty()
 			elif dev_map_preview != null and dev_map_preview.visible:
 				_close_dev_map_preview()
@@ -644,7 +698,46 @@ func _apply_current_level(reset_transient: bool = true, show_intro: bool = true)
 	_refresh_stage_unlocks()
 	_update_ui()
 	if show_intro:
-		_show_status("LEVEL %d/%d — %s • %s" % [current_level_index + 1, CAMPAIGN_LEVELS.size(), str(data["name"]), str(data["intro"])], 4.5)
+		_show_level_intro()
+
+func _show_level_intro() -> void:
+	if level_intro_root == null:
+		return
+
+	level_intro_token += 1
+	var token: int = level_intro_token
+	var data: Dictionary = _current_level_data()
+	var is_final: bool = current_level_index == CAMPAIGN_LEVELS.size() - 1
+
+	level_intro_active = true
+	level_intro_root.visible = true
+	level_intro_root.modulate.a = 0.0
+	level_intro_bg.color = Color("#16080a") if is_final else Color("#05080d")
+	level_intro_title.text = str(data["name"])
+	level_intro_title.modulate = Color("#d94a50") if is_final else Color("#f2d27c")
+	level_intro_message.text = str(data.get("intro_message", data.get("intro", "")))
+	level_intro_message.modulate = Color("#f2f2f2")
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+	var fade_in := create_tween()
+	fade_in.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	fade_in.tween_property(level_intro_root, "modulate:a", 1.0, 0.24)
+
+	await get_tree().create_timer(3.25 if is_final else 2.45, true, false, true).timeout
+	if token != level_intro_token:
+		return
+
+	var fade_out := create_tween()
+	fade_out.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	fade_out.tween_property(level_intro_root, "modulate:a", 0.0, 0.34)
+	await fade_out.finished
+	if token != level_intro_token:
+		return
+
+	level_intro_root.visible = false
+	level_intro_active = false
+	last_launch_time = Time.get_ticks_msec() / 1000.0
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _recalculate_campaign_stage(announce: bool = true) -> void:
 	var data: Dictionary = _current_level_data()
@@ -691,7 +784,7 @@ func _show_level_complete_panel(finished_name: String, final_level: bool, next_n
 		return
 	level_complete_title.text = "CAMPAIGN COMPLETE" if final_level else "LEVEL COMPLETE"
 	if final_level:
-		level_complete_body.text = "%s COMPLETE\n\nTrump survived every location in the campaign.\nDifficulty: %s\nLifetime launches: %d" % [finished_name, str(DIFFICULTIES[difficulty_index]["name"]), lifetime_bombs]
+		level_complete_body.text = "%s COMPLETE\n\n2,000,000 launches reached.\nAgainst all available evidence, the campaign is over.\n\nDifficulty: %s\nLifetime launches: %d" % [finished_name, str(DIFFICULTIES[difficulty_index]["name"]), lifetime_bombs]
 		level_complete_button.text = "RETURN TO MAIN MENU"
 	else:
 		level_complete_body.text = "%s COMPLETE\n\nTrump is travelling to the next location.\nNEXT: %s\nDifficulty: %s" % [finished_name, next_name, str(DIFFICULTIES[difficulty_index]["name"])]
@@ -716,7 +809,7 @@ func _continue_after_level_complete() -> void:
 	_refresh_menu_backdrop()
 
 func _trigger_level_gimmick() -> void:
-	if not game_started or paused or game_over or level_transition_active:
+	if not game_started or paused or game_over or level_transition_active or level_intro_active:
 		return
 	match current_level_index:
 		1:
@@ -833,6 +926,7 @@ func _refresh_menu_backdrop() -> void:
 	should_show = should_show or (dev_map_preview != null and dev_map_preview.visible)
 	should_show = should_show or (multiplayer_menu != null and multiplayer_menu.visible)
 	should_show = should_show or (multiplayer_role_menu != null and multiplayer_role_menu.visible)
+	should_show = should_show or (online_multiplayer_ui != null and is_instance_valid(online_multiplayer_ui) and online_multiplayer_ui.visible)
 	should_show = should_show or (update_panel != null and update_panel.visible)
 	menu_backdrop.visible = should_show
 
@@ -1751,7 +1845,7 @@ func _ambient_trump_allowed() -> bool:
 	)
 
 func _launch_bombs() -> void:
-	if not game_started or paused or game_over:
+	if not game_started or paused or game_over or level_intro_active or level_transition_active:
 		return
 	if button_busy or overheated:
 		return
@@ -1863,57 +1957,77 @@ func _answer_phone() -> void:
 	call_locks_button = active_caller == "LIL TIMMY"
 	call_duration_timer.start(float(call_seconds_left))
 	caller_label.text = "ON CALL: " + active_caller
+	active_call_line = ""
+	call_line_index = 0
 	_play_call_opening(active_caller)
+	if call_line_timer != null:
+		call_line_timer.start()
 
 func _caller_duration(caller: String) -> int:
 	match caller:
 		"LIL TIMMY":
-			return 10
+			return 38
 		"KIM":
-			return 9
+			return 34
 		"PUTIN":
-			return 9
+			return 42
 		"XI":
-			return 8
+			return 34
 		_:
-			return 8
+			return 34
+
+func _set_call_dialogue(message: String) -> void:
+	active_call_line = message
+	caller_timer_label.text = active_call_line
+	_say("%s: %s" % [active_caller, active_call_line])
+
+func _advance_call_dialogue() -> void:
+	if not call_active or not call_answered:
+		if call_line_timer != null:
+			call_line_timer.stop()
+		return
+
+	var script_value: Variant = CALL_SCRIPTS.get(active_caller, [])
+	if not (script_value is Array):
+		return
+	var lines: Array = script_value as Array
+	if call_line_index >= lines.size():
+		if call_line_timer != null:
+			call_line_timer.stop()
+		return
+
+	_set_call_dialogue(str(lines[call_line_index]))
+	call_line_index += 1
 
 func _play_call_opening(caller: String) -> void:
 	match caller:
 		"KIM":
-			_say("KIM: Hello, Donald. I have also found a button.")
 			enemy_pressure += 8.0
 		"PUTIN":
-			_say("PUTIN: I have prepared a very short presentation. Forty-seven slides.")
 			chaos += 3.0
-		"XI":
-			if rng.randf() < 0.06:
-				_say("XI: [RARE MEME AUDIO PLACEHOLDER]")
-			else:
-				_say("XI: 你好，唐纳德。你看起来很忙。")
 		"LIL TIMMY":
-			_say("TIMMY: Hey! Today we learned about fractions.")
 			_show_status("TIMMY HAS THE BUTTON LOCKED", 1.6)
+	_advance_call_dialogue()
 
 func _finish_answered_call() -> void:
 	if not call_active:
 		return
 
+	if call_line_timer != null:
+		call_line_timer.stop()
+
 	match active_caller:
 		"KIM":
 			enemy_pressure += 6.0
-			_say("KIM: This is becoming a competition.")
 		"PUTIN":
-			_say("PUTIN: I will send the other forty-six slides later.")
-		"XI":
-			_say("XI: 再见。")
-		"LIL TIMMY":
-			_say("TIMMY: Okay bye!")
+			chaos += 1.0
 
 	call_active = false
 	ambient_resume_after_msec = Time.get_ticks_msec() + 3500
 	call_answered = false
 	call_locks_button = false
+	active_call_line = ""
+	call_line_index = 0
 	caller_label.text = ""
 	caller_timer_label.text = ""
 	_show_status("CALL ENDED", 1.0)
@@ -1922,6 +2036,10 @@ func _miss_call() -> void:
 	if not call_active or call_answered:
 		return
 	call_active = false
+	active_call_line = ""
+	call_line_index = 0
+	if call_line_timer != null:
+		call_line_timer.stop()
 	ambient_resume_after_msec = Time.get_ticks_msec() + 1500
 	approval -= 4.0
 	chaos += 3.0
@@ -2165,6 +2283,13 @@ func _continue_game() -> void:
 	if not _load_game():
 		_start_new_game()
 		return
+	if campaign_complete:
+		game_started = false
+		main_menu.visible = true
+		if startup_label != null:
+			startup_label.text = "CAMPAIGN COMPLETE — START A NEW GAME TO PLAY AGAIN"
+		_update_menu_buttons()
+		return
 	game_started = true
 	paused = false
 	game_over = false
@@ -2209,6 +2334,12 @@ func _return_to_main_menu() -> void:
 		dev_panel.visible = false
 	if dev_map_preview != null:
 		dev_map_preview.visible = false
+	if mirror_overlay != null:
+		mirror_overlay.visible = false
+	if level_intro_root != null:
+		level_intro_root.visible = false
+	level_intro_active = false
+	level_intro_token += 1
 	if multiplayer_menu != null:
 		multiplayer_menu.visible = false
 	if multiplayer_role_menu != null:
@@ -2258,6 +2389,19 @@ func _toggle_subtitles() -> void:
 	subtitle_toggle_button.text = "SUBTITLES — " + ("ON" if subtitles_enabled else "OFF")
 	if not subtitles_enabled:
 		subtitle_label.text = ""
+	_save_settings()
+
+func _apply_window_mode() -> void:
+	DisplayServer.window_set_mode(
+		DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen_enabled
+		else DisplayServer.WINDOW_MODE_WINDOWED
+	)
+
+func _toggle_fullscreen() -> void:
+	fullscreen_enabled = not fullscreen_enabled
+	_apply_window_mode()
+	if fullscreen_toggle_button != null:
+		fullscreen_toggle_button.text = "FULLSCREEN — " + ("ON" if fullscreen_enabled else "OFF")
 	_save_settings()
 
 func _open_settings() -> void:
@@ -2447,6 +2591,7 @@ func _load_game() -> bool:
 func _save_settings() -> void:
 	var data: Dictionary = {
 		"subtitles": subtitles_enabled,
+		"fullscreen": fullscreen_enabled,
 		"difficulty_index": difficulty_index,
 	}
 	var file: FileAccess = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
@@ -2466,6 +2611,7 @@ func _load_settings() -> void:
 		return
 
 	subtitles_enabled = bool(parsed.get("subtitles", false))
+	fullscreen_enabled = bool(parsed.get("fullscreen", false))
 	difficulty_index = clampi(int(parsed.get("difficulty_index", 1)), 0, DIFFICULTIES.size() - 1)
 
 # ============================================================
@@ -2532,6 +2678,12 @@ func _build_timers() -> void:
 	call_duration_timer.timeout.connect(_finish_answered_call)
 	add_child(call_duration_timer)
 
+	call_line_timer = Timer.new()
+	call_line_timer.one_shot = false
+	call_line_timer.wait_time = 5.5
+	call_line_timer.timeout.connect(_advance_call_dialogue)
+	add_child(call_line_timer)
+
 	paper_timer = Timer.new()
 	paper_timer.one_shot = true
 	paper_timer.timeout.connect(_miss_paperwork)
@@ -2548,7 +2700,7 @@ func _build_timers() -> void:
 	add_child(alarm_timer)
 
 func _on_event_tick() -> void:
-	if not game_started or paused or game_over:
+	if not game_started or paused or game_over or level_intro_active or level_transition_active:
 		return
 
 	var diff: Dictionary = DIFFICULTIES[difficulty_index]
@@ -2576,6 +2728,8 @@ func _reset_runtime_events() -> void:
 	call_answered = false
 	call_locks_button = false
 	active_caller = ""
+	active_call_line = ""
+	call_line_index = 0
 	ambient_resume_after_msec = 0
 	paperwork_active = false
 	crisis_active = false
@@ -2585,6 +2739,8 @@ func _reset_runtime_events() -> void:
 		call_ring_timer.stop()
 	if call_duration_timer != null:
 		call_duration_timer.stop()
+	if call_line_timer != null:
+		call_line_timer.stop()
 	if paper_timer != null:
 		paper_timer.stop()
 	if crisis_timer != null:
@@ -3302,6 +3458,8 @@ func _build_ui() -> void:
 	_build_level_complete_panel()
 	_build_game_over_panel()
 	_build_dev_ui()
+	_build_level_intro_overlay()
+	_build_mirror_overlay()
 	_update_menu_buttons()
 
 func _build_loading_screen() -> void:
@@ -3686,7 +3844,7 @@ func _build_main_menu() -> void:
 	continue_button.pressed.connect(_continue_game)
 
 	var multiplayer := _menu_button("MULTIPLAYER", Vector2(110, 286), main_menu)
-	multiplayer.pressed.connect(_open_online_multiplayer)
+	multiplayer.pressed.connect(_open_multiplayer_menu)
 
 	var settings := _menu_button("SETTINGS", Vector2(110, 340), main_menu)
 	settings.pressed.connect(_open_settings)
@@ -3736,36 +3894,42 @@ func _build_pause_menu() -> void:
 func _build_settings_menu() -> void:
 	settings_menu = Panel.new()
 	_make_panel_opaque(settings_menu, Color(0.05, 0.08, 0.12, 0.82))
-	settings_menu.position = Vector2(390, 180)
-	settings_menu.size = Vector2(500, 330)
+	settings_menu.position = Vector2(390, 145)
+	settings_menu.size = Vector2(500, 430)
 	settings_menu.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	layer.add_child(settings_menu)
 	settings_menu.visible = false
 
 	var title := Label.new()
 	title.text = "SETTINGS"
-	title.position = Vector2(165, 35)
+	title.position = Vector2(165, 32)
 	title.add_theme_font_size_override("font_size", 30)
 	settings_menu.add_child(title)
 
-	subtitle_toggle_button = _menu_button("", Vector2(90, 110), settings_menu)
+	subtitle_toggle_button = _menu_button("", Vector2(90, 100), settings_menu)
 	subtitle_toggle_button.pressed.connect(_toggle_subtitles)
+
+	fullscreen_toggle_button = _menu_button("", Vector2(90, 158), settings_menu)
+	fullscreen_toggle_button.pressed.connect(_toggle_fullscreen)
+
+	var mirror := _menu_button("OPEN MIRROR", Vector2(90, 216), settings_menu)
+	mirror.pressed.connect(_open_mirror)
 
 	var note := Label.new()
 	note.text = "Subtitles are OFF by default."
-	note.position = Vector2(145, 162)
+	note.position = Vector2(145, 273)
 	note.add_theme_font_size_override("font_size", 12)
 	settings_menu.add_child(note)
 
-	var close := _menu_button("CLOSE", Vector2(90, 230), settings_menu)
+	var close := _menu_button("CLOSE", Vector2(90, 330), settings_menu)
 	close.pressed.connect(_close_settings)
 
 
 func _build_multiplayer_ui() -> void:
 	multiplayer_menu = Panel.new()
 	_make_panel_opaque(multiplayer_menu, Color(0.04, 0.07, 0.11, 0.86))
-	multiplayer_menu.position = Vector2(360, 155)
-	multiplayer_menu.size = Vector2(560, 410)
+	multiplayer_menu.position = Vector2(360, 135)
+	multiplayer_menu.size = Vector2(560, 455)
 	layer.add_child(multiplayer_menu)
 	multiplayer_menu.visible = false
 
@@ -3778,7 +3942,7 @@ func _build_multiplayer_ui() -> void:
 	multiplayer_menu.add_child(title)
 
 	var note := Label.new()
-	note.text = "3D MAP / ROLE PREVIEW BUILD\nNetworking and voice chat are the next multiplayer layer."
+	note.text = "Play online, or use Local Practice to learn the roles and viewpoints."
 	note.position = Vector2(40, 82)
 	note.size = Vector2(480, 52)
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -3787,13 +3951,16 @@ func _build_multiplayer_ui() -> void:
 	note.modulate = Color("#aebdca")
 	multiplayer_menu.add_child(note)
 
-	var crisis := _menu_button("CRISIS ROOM — 4 PLAYERS", Vector2(120, 160), multiplayer_menu)
+	var online := _menu_button("ONLINE — HOST / JOIN", Vector2(120, 150), multiplayer_menu)
+	online.pressed.connect(_open_online_multiplayer)
+
+	var crisis := _menu_button("CRISIS ROOM — LOCAL PRACTICE", Vector2(120, 208), multiplayer_menu)
 	crisis.pressed.connect(_open_multiplayer_roles.bind("crisis"))
 
-	var debate := _menu_button("PRESIDENTIAL DEBATE", Vector2(120, 218), multiplayer_menu)
+	var debate := _menu_button("PRESIDENTIAL DEBATE — LOCAL PRACTICE", Vector2(120, 266), multiplayer_menu)
 	debate.pressed.connect(_open_multiplayer_roles.bind("debate"))
 
-	var back := _menu_button("BACK", Vector2(120, 306), multiplayer_menu)
+	var back := _menu_button("BACK", Vector2(120, 350), multiplayer_menu)
 	back.pressed.connect(_close_multiplayer_menu)
 
 	multiplayer_role_menu = Panel.new()
@@ -3847,24 +4014,39 @@ func _build_multiplayer_ui() -> void:
 func _open_online_multiplayer() -> void:
 	if game_started:
 		return
-	main_menu.visible = false
+
 	if online_multiplayer_ui == null or not is_instance_valid(online_multiplayer_ui):
 		var ui_script: Script = load("res://scripts/online/online_multiplayer_ui.gd") as Script
-		online_multiplayer_ui = Control.new()
-		online_multiplayer_ui.name = "OnlineMultiplayerUI"
-		online_multiplayer_ui.set_script(ui_script)
-		layer.add_child(online_multiplayer_ui)
-		online_multiplayer_ui.close_requested.connect(_close_online_multiplayer)
-		online_multiplayer_ui.launch_match.connect(_launch_online_multiplayer_match)
-	else:
-		online_multiplayer_ui.visible = true
-		online_multiplayer_ui.show_home()
+		if ui_script == null:
+			# Never strand the player on a blank screen if a multiplayer file is missing.
+			main_menu.visible = false
+			multiplayer_menu.visible = true
+			_refresh_menu_backdrop()
+			return
+
+		var ui := Control.new()
+		ui.name = "OnlineMultiplayerUI"
+		ui.set_script(ui_script)
+		layer.add_child(ui)
+		online_multiplayer_ui = ui
+
+		if online_multiplayer_ui.has_signal("close_requested"):
+			online_multiplayer_ui.connect("close_requested", _close_online_multiplayer)
+		if online_multiplayer_ui.has_signal("launch_match"):
+			online_multiplayer_ui.connect("launch_match", _launch_online_multiplayer_match)
+
+	main_menu.visible = false
+	multiplayer_menu.visible = false
+	online_multiplayer_ui.visible = true
+	if online_multiplayer_ui.has_method("show_home"):
+		online_multiplayer_ui.call("show_home")
 	_refresh_menu_backdrop()
 
 func _close_online_multiplayer() -> void:
 	if online_multiplayer_ui != null:
 		online_multiplayer_ui.visible = false
-	main_menu.visible = true
+	main_menu.visible = false
+	multiplayer_menu.visible = true
 	_refresh_menu_backdrop()
 
 func _launch_online_multiplayer_match(mode_name: String, role_name: String) -> void:
@@ -3899,7 +4081,7 @@ func _open_multiplayer_roles(mode_name: String) -> void:
 	_clear_multiplayer_role_buttons()
 
 	if mode_name == "crisis":
-		multiplayer_role_title.text = "CRISIS ROOM — CHOOSE TEST ROLE"
+		multiplayer_role_title.text = "CRISIS ROOM — CHOOSE ROLE"
 		multiplayer_role_note.text = "Every player is Trump. Roles change the station, information and responsibilities."
 		var roles: Array[String] = ["INTEL", "LAUNCH", "RADAR", "COMMS"]
 		for i in range(roles.size()):
@@ -3907,7 +4089,7 @@ func _open_multiplayer_roles(mode_name: String) -> void:
 			b.name = "DynamicRole_" + roles[i]
 			b.pressed.connect(_start_multiplayer_preview.bind("crisis", roles[i]))
 	else:
-		multiplayer_role_title.text = "PRESIDENTIAL DEBATE — CHOOSE TEST ROLE"
+		multiplayer_role_title.text = "PRESIDENTIAL DEBATE — CHOOSE ROLE"
 		multiplayer_role_note.text = "Your first-person view is physically located at your podium, moderator desk or audience seat."
 		var roles: Array[String] = ["TRUMP", "BIDEN", "MODERATOR", "AUDIENCE"]
 		for i in range(roles.size()):
@@ -3948,13 +4130,13 @@ func _start_multiplayer_preview(mode_name: String, role_name: String) -> void:
 
 	multiplayer_hud.visible = true
 	multiplayer_hud_title.text = "CRISIS ROOM" if mode_name == "crisis" else "PRESIDENTIAL DEBATE"
-	multiplayer_hud_role.text = "ROLE: %s\nMouse: look around   ESC: return" % role_name.replace("_", " ")
+	multiplayer_hud_role.text = "ROLE: %s\nMouse: look • LEFT CLICK: interact • ESC: return" % role_name.replace("_", " ")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_refresh_menu_backdrop()
 
 func _on_multiplayer_role_changed(role_name: String) -> void:
 	if multiplayer_hud_role != null:
-		multiplayer_hud_role.text = "ROLE: %s\nMouse: look around   ESC: return" % role_name.replace("_", " ")
+		multiplayer_hud_role.text = "ROLE: %s\nMouse: look • LEFT CLICK: interact • ESC: return" % role_name.replace("_", " ")
 
 func _exit_multiplayer_preview() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -4266,6 +4448,121 @@ func _build_level_complete_panel() -> void:
 	level_complete_button.size = Vector2(320, 46)
 	level_complete_button.pressed.connect(_continue_after_level_complete)
 
+func _build_level_intro_overlay() -> void:
+	level_intro_root = Control.new()
+	level_intro_root.name = "LevelIntroOverlay"
+	level_intro_root.position = Vector2.ZERO
+	level_intro_root.size = Vector2(1280, 720)
+	level_intro_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	level_intro_root.process_mode = Node.PROCESS_MODE_ALWAYS
+	layer.add_child(level_intro_root)
+	level_intro_root.visible = false
+
+	level_intro_bg = ColorRect.new()
+	level_intro_bg.position = Vector2.ZERO
+	level_intro_bg.size = Vector2(1280, 720)
+	level_intro_bg.color = Color("#05080d")
+	level_intro_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	level_intro_root.add_child(level_intro_bg)
+
+	var studio := Label.new()
+	studio.text = "SIMULATED STUDIOS"
+	studio.position = Vector2(0, 175)
+	studio.size = Vector2(1280, 30)
+	studio.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	studio.add_theme_font_size_override("font_size", 13)
+	studio.modulate = Color("#8f9298")
+	level_intro_root.add_child(studio)
+
+	level_intro_title = Label.new()
+	level_intro_title.position = Vector2(80, 260)
+	level_intro_title.size = Vector2(1120, 80)
+	level_intro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_intro_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	level_intro_title.add_theme_font_size_override("font_size", 48)
+	level_intro_title.modulate = Color("#f2d27c")
+	level_intro_root.add_child(level_intro_title)
+
+	var divider := ColorRect.new()
+	divider.position = Vector2(490, 357)
+	divider.size = Vector2(300, 2)
+	divider.color = Color("#b79547")
+	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	level_intro_root.add_child(divider)
+
+	level_intro_message = Label.new()
+	level_intro_message.position = Vector2(180, 392)
+	level_intro_message.size = Vector2(920, 70)
+	level_intro_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_intro_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	level_intro_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	level_intro_message.add_theme_font_size_override("font_size", 22)
+	level_intro_message.modulate = Color("#f2f2f2")
+	level_intro_root.add_child(level_intro_message)
+
+func _build_mirror_overlay() -> void:
+	mirror_overlay = Control.new()
+	mirror_overlay.name = "MirrorOverlay"
+	mirror_overlay.position = Vector2.ZERO
+	mirror_overlay.size = Vector2(1280, 720)
+	mirror_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	mirror_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	layer.add_child(mirror_overlay)
+	mirror_overlay.visible = false
+
+	var bg := ColorRect.new()
+	bg.position = Vector2.ZERO
+	bg.size = Vector2(1280, 720)
+	bg.color = Color(0.02, 0.02, 0.025, 0.96)
+	mirror_overlay.add_child(bg)
+
+	var frame := Panel.new()
+	_make_panel_opaque(frame, Color("#17130d"))
+	frame.position = Vector2(390, 70)
+	frame.size = Vector2(500, 570)
+	mirror_overlay.add_child(frame)
+
+	var title := Label.new()
+	title.text = "THE MIRROR"
+	title.position = Vector2(0, 18)
+	title.size = Vector2(500, 34)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.modulate = Color("#d7b765")
+	frame.add_child(title)
+
+	mirror_image = TextureRect.new()
+	mirror_image.position = Vector2(45, 62)
+	mirror_image.size = Vector2(410, 410)
+	mirror_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mirror_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	if ResourceLoader.exists("res://assets/mirror/orange_mirror.png"):
+		mirror_image.texture = load("res://assets/mirror/orange_mirror.png") as Texture2D
+	frame.add_child(mirror_image)
+
+	var caption := Label.new()
+	caption.text = "Looking fantastic."
+	caption.position = Vector2(0, 482)
+	caption.size = Vector2(500, 30)
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.add_theme_font_size_override("font_size", 18)
+	caption.modulate = Color("#f1d687")
+	frame.add_child(caption)
+
+	var close := _menu_button("CLOSE", Vector2(90, 520), frame)
+	close.pressed.connect(_close_mirror)
+
+func _open_mirror() -> void:
+	if mirror_overlay == null:
+		return
+	mirror_overlay.visible = true
+	_refresh_menu_backdrop()
+
+func _close_mirror() -> void:
+	if mirror_overlay != null:
+		mirror_overlay.visible = false
+	_refresh_menu_backdrop()
+
 func _build_game_over_panel() -> void:
 	game_over_panel = Panel.new()
 	_make_panel_opaque(game_over_panel, Color(0.05, 0.08, 0.12, 0.84))
@@ -4421,7 +4718,10 @@ func _update_ui() -> void:
 			phone_display_label.text = "INCOMING\n%s\n%.1fs" % [active_caller, call_ring_timer.time_left]
 			phone_display_label.modulate = Color("#8affb5")
 		elif call_active and call_answered:
-			phone_display_label.text = "ON CALL\n%s\n%.1fs" % [active_caller, call_duration_timer.time_left]
+			var call_preview: String = active_call_line
+			if call_preview.length() > 44:
+				call_preview = call_preview.left(41) + "..."
+			phone_display_label.text = "ON CALL • %s\n%s\n%.1fs" % [active_caller, call_preview, call_duration_timer.time_left]
 			phone_display_label.modulate = Color("#baf6ff")
 		else:
 			phone_display_label.text = "DESK PHONE\nSTANDBY"
@@ -4482,10 +4782,26 @@ func _update_ui() -> void:
 
 	if subtitle_toggle_button != null:
 		subtitle_toggle_button.text = "SUBTITLES — " + ("ON" if subtitles_enabled else "OFF")
+	if fullscreen_toggle_button != null:
+		fullscreen_toggle_button.text = "FULLSCREEN — " + ("ON" if fullscreen_enabled else "OFF")
+
+func _campaign_save_complete() -> bool:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return false
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return false
+	return bool((parsed as Dictionary).get("campaign_complete", false))
 
 func _update_menu_buttons() -> void:
 	if continue_button != null:
-		continue_button.disabled = not FileAccess.file_exists(SAVE_PATH)
+		var has_save: bool = FileAccess.file_exists(SAVE_PATH)
+		var completed: bool = _campaign_save_complete() if has_save else false
+		continue_button.disabled = not has_save or completed
+		continue_button.text = "CAMPAIGN COMPLETE" if completed else "CONTINUE"
 
 func _show_status(message: String, seconds: float) -> void:
 	if status_label == null:

@@ -1,0 +1,15 @@
+PASS - Main VERSION 1.0.3
+PASS - Project version 1.0.3
+PASS - Installer version 1.0.3
+PASS - Updater version 1.0.3
+PASS - Workflow artifact 1.0.3
+PASS - Campaign goals exact
+PASS - Nightmare 500k
+PASS - Nightmare > final upgrade
+PASS - Host availability preflight
+PASS - Local host fallback
+PASS - ENet local host
+PASS - Fallback enabled in project
+PASS - Host UI explains mode
+PASS - Local test lobby labelled
+PASS - Local host cleanup safe

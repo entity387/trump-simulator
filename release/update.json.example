@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "download_url": "https://trumpsimulator.xyz/downloads/TrumpSimulatorSetup.exe",
+  "sha256": "REPLACED_AUTOMATICALLY_BY_BUILD_SCRIPT",
+  "required": false,
+  "notes": "Trump Simulator 1.0 official release.",
+  "published_at": "generated-at-build-time"
+}

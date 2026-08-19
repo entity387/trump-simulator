@@ -1,11 +1,11 @@
 ; Trump Simulator Desktop Edition
-; Trump Simulator 1.0.0 Official Release
+; Trump Simulator 1.1.0 Final Completion
 config_version=5
 
 [application]
 config/name="Trump Simulator"
 config/description="A satirical desk-clicking chaos game."
-config/version="1.0.0"
+config/version="1.1.0"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.7")
 
@@ -33,6 +33,7 @@ driver/enable_input=false
 
 multiplayer/join_code_api="http://127.0.0.1:8787"
 multiplayer/allow_solo_test=true
-update/current_version="1.0.0"
+multiplayer/allow_local_host_fallback=true
+update/current_version="1.1.0"
 update/manifest_url="https://trumpsimulator.xyz/update.json"
 update/check_in_editor=false

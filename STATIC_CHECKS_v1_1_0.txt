@@ -1,0 +1,21 @@
+PASS - Version 1.1.0 in main
+PASS - All 10 intro messages
+PASS - Full-screen intro overlay exists
+PASS - Final intro is Good luck
+PASS - Gameplay locked during intro
+PASS - Completed-save Continue bug handled
+PASS - Completed save disables Continue
+PASS - Long calls
+PASS - Call scripts present
+PASS - No rare meme placeholder
+PASS - Call dialogue shown on phone
+PASS - Mirror overlay restored
+PASS - Mirror asset exists
+PASS - Fullscreen setting exists
+PASS - No public ROLE PREVIEW text
+PASS - No public CHOOSE TEST ROLE text
+PASS - Project version updated
+PASS - Updater version updated
+PASS - Installer version updated
+PASS - GitHub workflow version updated
+PASS - No duplicate main.gd functions

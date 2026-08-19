@@ -1,0 +1,8 @@
+PASS - Checks Windows release template
+PASS - Uses verbose Godot export
+PASS - Captures stdout
+PASS - Captures stderr
+PASS - Prints last 200 lines
+PASS - Always uploads diagnostics
+PASS - Diagnostic artifact named
+PASS - Normal installer artifact retained

@@ -1,0 +1,16 @@
+PASS - Version is 1.0.2
+PASS - Update manager is 1.0.2
+PASS - Installer is 1.0.2
+PASS - Workflow is 1.0.2
+PASS - Left-click interaction implemented
+PASS - Ray query targets interaction areas
+PASS - Buttons have collision hitboxes
+PASS - Interaction crosshair added
+PASS - Debate actions wired
+PASS - Crisis actions wired
+PASS - Screens face player
+PASS - Button labels billboard
+PASS - Reversed screen label rotation removed
+PASS - Crisis cameras moved back
+PASS - HUD explains left click
+PASS - No duplicate arena functions

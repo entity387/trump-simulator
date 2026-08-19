@@ -1,0 +1,12 @@
+PASS - active_call_line declared
+PASS - call_line_index declared
+PASS - active_call_line used after declaration
+PASS - call_line_index used after declaration
+PASS - call_line_timer declared
+PASS - fullscreen state declared
+PASS - level intro state declared
+PASS - mirror overlay declared
+PASS - no duplicate functions
+PASS - brace balance
+PASS - paren balance
+PASS - bracket balance
