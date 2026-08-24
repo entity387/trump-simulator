@@ -10,6 +10,7 @@ signal voice_state_changed(state: String)
 const SOCKET_ID := "trump-simulator-v1"
 const EOS_CONFIG_PATH := "res://config/eos_credentials.json"
 const EOS_BRIDGE_SOURCE := "res://scripts/eos/eos_bridge.gd.txt"
+const LOCAL_TEST_PORT := 27887
 
 var backend_url: String = ""
 var display_name: String = "Player"
@@ -24,6 +25,7 @@ var voice_ready := false
 var players: Dictionary = {}
 var local_role := ""
 var local_ready := false
+var local_test_host := false
 
 var _bridge: Node
 var _http: HTTPRequest
@@ -69,7 +71,7 @@ func _create_dynamic_eos_bridge() -> bool:
 	if _bridge != null and is_instance_valid(_bridge):
 		return true
 	if not eos_plugin_available():
-		_fail("EOSG is not installed. Install Epic Online Services Godot (EOSG) before using online multiplayer.")
+		_fail("Online multiplayer is unavailable.")
 		return false
 	if not FileAccess.file_exists(EOS_BRIDGE_SOURCE):
 		_fail("EOS bridge source is missing.")
@@ -80,7 +82,7 @@ func _create_dynamic_eos_bridge() -> bool:
 	bridge_script.source_code = source
 	var reload_result := bridge_script.reload()
 	if reload_result != OK:
-		_fail("EOS bridge could not compile. Check that EOSG is installed and enabled.")
+		_fail("Online multiplayer is unavailable.")
 		return false
 
 	_bridge = Node.new()
@@ -88,6 +90,66 @@ func _create_dynamic_eos_bridge() -> bool:
 	_bridge.set_script(bridge_script)
 	add_child(_bridge)
 	return true
+
+func online_host_available() -> bool:
+	if not eos_plugin_available():
+		return false
+
+	var credentials := _load_eos_credentials()
+	var required := [
+		"product_name", "product_version", "product_id", "sandbox_id",
+		"deployment_id", "client_id", "client_secret"
+	]
+	for key in required:
+		var value: String = str(credentials.get(key, "")).strip_edges()
+		if value.is_empty() or value.begins_with("PASTE_"):
+			return false
+
+	if backend_url.is_empty():
+		return false
+
+	var lower_backend := backend_url.to_lower()
+	if "127.0.0.1" in lower_backend or "localhost" in lower_backend:
+		return false
+
+	return true
+
+func host_mode_description() -> String:
+	if online_host_available():
+		return "ONLINE HOST READY — EOS P2P + JOIN CODE"
+	return "LOCAL HOST READY"
+
+func _start_local_test_host(mode_name: String) -> void:
+	var peer := ENetMultiplayerPeer.new()
+	var result: int = peer.create_server(LOCAL_TEST_PORT, 8)
+	if result != OK:
+		is_host = false
+		connected = false
+		local_test_host = false
+		_fail("Could not start a local lobby.")
+		return
+
+	multiplayer.multiplayer_peer = peer
+	connected = true
+	is_host = true
+	local_test_host = true
+	host_product_user_id = "LOCAL"
+	local_role = _default_role_for_mode(mode_name)
+	local_ready = false
+	join_code = "LOCAL-TEST"
+	host_token = ""
+	players = {
+		1: {
+			"name": display_name,
+			"role": local_role,
+			"ready": false,
+			"host": true
+		}
+	}
+
+	status_changed.emit("LOCAL LOBBY READY — START MATCH WHEN READY")
+	connection_state_changed.emit("lobby")
+	_emit_lobby()
 
 func ensure_eos_ready() -> bool:
 	if eos_ready:
@@ -102,14 +164,14 @@ func ensure_eos_ready() -> bool:
 	]
 	for key in required:
 		if str(credentials.get(key, "")).strip_edges().is_empty():
-			_fail("EOS credentials are not configured. Copy eos_credentials.example.json to eos_credentials.json and fill in your Epic Developer Portal values.")
+			_fail("Online multiplayer is unavailable.")
 			return false
 
 	status_changed.emit("CONNECTING TO EPIC ONLINE SERVICES...")
 	connection_state_changed.emit("eos_connecting")
 	var ok: bool = await _bridge.initialize_and_login_async(credentials)
 	if not ok:
-		_fail("Epic Online Services login failed. Check EOS credentials and EOSG setup.")
+		_fail("Online services login failed. Please try again.")
 		return false
 
 	eos_ready = true
@@ -124,10 +186,27 @@ func host_game(mode_name: String, player_name: String) -> void:
 	display_name = _clean_name(player_name)
 	game_mode = mode_name
 	is_host = true
+	local_test_host = false
 	status_changed.emit("STARTING HOST...")
 	connection_state_changed.emit("hosting")
 
+	var allow_local_fallback := bool(ProjectSettings.get_setting(
+		"trump_simulator/multiplayer/allow_local_host_fallback",
+		true
+	))
+
+	if not online_host_available():
+		if allow_local_fallback:
+			_start_local_test_host(mode_name)
+			return
+		is_host = false
+		_fail("Online multiplayer is unavailable.")
+		return
+
 	if not await ensure_eos_ready():
+		if allow_local_fallback:
+			_start_local_test_host(mode_name)
+			return
 		is_host = false
 		return
 
@@ -202,7 +281,7 @@ func join_game(code: String, player_name: String) -> void:
 
 func leave_session() -> void:
 	_heartbeat_timer.stop()
-	if is_host and not join_code.is_empty() and not host_token.is_empty():
+	if is_host and not local_test_host and not join_code.is_empty() and not host_token.is_empty():
 		await _delete_room()
 
 	if _bridge != null and is_instance_valid(_bridge):
@@ -218,6 +297,7 @@ func leave_session() -> void:
 	host_product_user_id = ""
 	local_role = ""
 	local_ready = false
+	local_test_host = false
 	status_changed.emit("OFFLINE")
 	connection_state_changed.emit("offline")
 	_emit_lobby()
@@ -441,7 +521,7 @@ func _normalise_code(value: String) -> String:
 
 func _create_room() -> Dictionary:
 	if backend_url.is_empty():
-		_fail("Join-code service URL is not configured.")
+		_fail("Online multiplayer is unavailable.")
 		return {}
 	var body := JSON.stringify({
 		"host_user_id": host_product_user_id,
@@ -457,7 +537,7 @@ func _create_room() -> Dictionary:
 
 func _resolve_room(code_value: String) -> Dictionary:
 	if backend_url.is_empty():
-		_fail("Join-code service URL is not configured.")
+		_fail("Online multiplayer is unavailable.")
 		return {}
 	var encoded := code_value.uri_encode()
 	var result := await _http_json(

@@ -2,6 +2,7 @@ extends Node3D
 
 signal exit_requested
 signal role_changed(role_name: String)
+signal interaction_feedback(message: String)
 
 # This scene is intentionally built from real 3D meshes.
 # It is the visual/map foundation for networked multiplayer.
@@ -16,6 +17,10 @@ var local_character: Node3D
 var yaw: float = 0.0
 var pitch: float = 0.0
 var mouse_look_enabled: bool = true
+var interaction_status_label: Label
+var last_interaction_text: String = ""
+const INTERACT_LAYER: int = 1 << 19
+const INTERACT_DISTANCE: float = 3.2
 
 var debate_characters: Dictionary = {}
 var crisis_characters: Dictionary = {}
@@ -34,6 +39,15 @@ const BLUE_TIE := Color("#315b9a")
 const GOLD := Color("#c8aa62")
 const SCREEN := Color("#0d2431")
 
+# Multiplayer maps use the same original material set as the campaign.
+# Keeping these as resource paths means the exported game bundles them normally.
+const TEX_WOOD := "res://assets/textures/wood_walnut.png"
+const TEX_PLASTER := "res://assets/textures/plaster_warm.png"
+const TEX_RUG := "res://assets/textures/rug_presidential.png"
+const TEX_LEATHER := "res://assets/textures/leather_green.png"
+const TEX_MARBLE := "res://assets/textures/marble_cream.png"
+const TEX_PAPER := "res://assets/textures/paper_offwhite.png"
+
 func _ready() -> void:
 	set_process_input(true)
 
@@ -44,6 +58,11 @@ func _input(event: InputEvent) -> void:
 		var key_event := event as InputEventKey
 		if key_event.pressed and not key_event.echo and key_event.keycode == KEY_ESCAPE:
 			exit_requested.emit()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton:
+		var mouse_button := event as InputEventMouseButton
+		if mouse_button.pressed and mouse_button.button_index == MOUSE_BUTTON_LEFT:
+			_try_interact()
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and mouse_look_enabled and arena_camera != null:
 		var motion := event as InputEventMouseMotion
@@ -65,6 +84,7 @@ func build_mode(mode_name: String, role_name: String) -> void:
 	arena_root.add_child(character_root)
 
 	_build_lighting()
+	_build_interaction_overlay()
 
 	if mode_name == "debate":
 		_build_debate_room()
@@ -115,11 +135,158 @@ func _build_lighting() -> void:
 	fill.light_color = Color("#e7edf5")
 	arena_root.add_child(fill)
 
-func _material(color: Color, metallic: float = 0.0, roughness: float = 0.68) -> StandardMaterial3D:
+func _build_interaction_overlay() -> void:
+	var overlay_layer := CanvasLayer.new()
+	overlay_layer.layer = 20
+	arena_root.add_child(overlay_layer)
+
+	var overlay_root := Control.new()
+	overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_root.anchor_right = 1.0
+	overlay_root.anchor_bottom = 1.0
+	overlay_layer.add_child(overlay_root)
+
+	var crosshair := Label.new()
+	crosshair.text = "+"
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.anchor_left = 0.5
+	crosshair.anchor_right = 0.5
+	crosshair.anchor_top = 0.5
+	crosshair.anchor_bottom = 0.5
+	crosshair.offset_left = -18.0
+	crosshair.offset_right = 18.0
+	crosshair.offset_top = -24.0
+	crosshair.offset_bottom = 24.0
+	crosshair.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	crosshair.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	crosshair.add_theme_font_size_override("font_size", 24)
+	crosshair.add_theme_color_override("font_color", Color("#ffffff"))
+	crosshair.add_theme_color_override("font_outline_color", Color("#000000"))
+	crosshair.add_theme_constant_override("outline_size", 5)
+	overlay_root.add_child(crosshair)
+
+	interaction_status_label = Label.new()
+	interaction_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	interaction_status_label.text = "Aim with the centre crosshair • LEFT CLICK to use a control • ESC to return"
+	interaction_status_label.anchor_left = 0.5
+	interaction_status_label.anchor_right = 0.5
+	interaction_status_label.anchor_top = 1.0
+	interaction_status_label.anchor_bottom = 1.0
+	interaction_status_label.offset_left = -360.0
+	interaction_status_label.offset_right = 360.0
+	interaction_status_label.offset_top = -72.0
+	interaction_status_label.offset_bottom = -30.0
+	interaction_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	interaction_status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	interaction_status_label.add_theme_font_size_override("font_size", 15)
+	interaction_status_label.add_theme_color_override("font_color", Color("#f4f6f8"))
+	interaction_status_label.add_theme_color_override("font_outline_color", Color("#000000"))
+	interaction_status_label.add_theme_constant_override("outline_size", 5)
+	overlay_root.add_child(interaction_status_label)
+
+func _try_interact() -> void:
+	if arena_camera == null or not is_instance_valid(arena_camera):
+		return
+
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var screen_point: Vector2 = viewport_size * 0.5
+	var ray_from: Vector3 = arena_camera.project_ray_origin(screen_point)
+	var ray_direction: Vector3 = arena_camera.project_ray_normal(screen_point)
+	var ray_to: Vector3 = ray_from + ray_direction * INTERACT_DISTANCE
+
+	var query := PhysicsRayQueryParameters3D.create(ray_from, ray_to, INTERACT_LAYER)
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		_show_interaction_feedback("No control under the crosshair.")
+		return
+
+	var collider_value: Variant = hit.get("collider")
+	if not (collider_value is Area3D):
+		_show_interaction_feedback("No usable control under the crosshair.")
+		return
+
+	var area := collider_value as Area3D
+	var action_id: String = str(area.get_meta("mp_action", ""))
+	var action_label: String = str(area.get_meta("mp_label", "CONTROL"))
+	var button_root := area.get_parent() as Node3D
+
+	if action_id.is_empty():
+		_show_interaction_feedback("That control is not active yet.")
+		return
+
+	_animate_console_button(button_root)
+	_handle_multiplayer_action(action_id, action_label)
+
+func _animate_console_button(button_root: Node3D) -> void:
+	if button_root == null:
+		return
+	var cap := button_root.get_node_or_null("Button") as MeshInstance3D
+	if cap == null:
+		return
+	var start_position: Vector3 = cap.position
+	var pressed_position := start_position + Vector3(0.0, -0.025, 0.0)
+	var tween := create_tween()
+	tween.tween_property(cap, "position", pressed_position, 0.045)
+	tween.tween_property(cap, "position", start_position, 0.075)
+
+func _handle_multiplayer_action(action_id: String, action_label: String) -> void:
+	var message: String = action_label + " pressed."
+
+	match action_id:
+		"DEBATE_TRUMP_INTERRUPT":
+			message = "Trump interrupt pressed."
+		"DEBATE_BIDEN_INTERRUPT":
+			message = "Biden interrupt pressed."
+		"MOD_MUTE_TRUMP":
+			message = "Moderator: Trump muted."
+		"MOD_NEXT":
+			message = "Moderator: next question."
+		"MOD_MUTE_BIDEN":
+			message = "Moderator: Biden muted."
+		"CRISIS_INTEL_ACTION":
+			message = "Intel action acknowledged."
+		"CRISIS_INTEL_CONFIRM":
+			message = "Intel order confirmed."
+		"CRISIS_LAUNCH":
+			message = "Launch control pressed."
+		"CRISIS_INTERCEPT":
+			message = "Intercept control pressed."
+		"CRISIS_RADAR_ACTION":
+			message = "Radar action acknowledged."
+		"CRISIS_RADAR_CONFIRM":
+			message = "Radar report confirmed."
+		"CRISIS_COMMS_ACTION":
+			message = "Communications action acknowledged."
+		"CRISIS_COMMS_CONFIRM":
+			message = "Communications order confirmed."
+
+	_show_interaction_feedback(message)
+
+func _show_interaction_feedback(message: String) -> void:
+	last_interaction_text = message
+	if interaction_status_label != null and is_instance_valid(interaction_status_label):
+		interaction_status_label.text = message + "   •   Aim + LEFT CLICK to interact"
+	interaction_feedback.emit(message)
+
+func _material(
+	color: Color,
+	metallic: float = 0.0,
+	roughness: float = 0.68,
+	texture_path: String = "",
+	uv_scale: Vector3 = Vector3.ONE
+) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.metallic = metallic
 	material.roughness = roughness
+	if texture_path != "" and ResourceLoader.exists(texture_path):
+		var texture: Texture2D = load(texture_path) as Texture2D
+		if texture != null:
+			material.albedo_texture = texture
+			material.uv1_scale = uv_scale
 	return material
 
 func _box(
@@ -128,7 +295,9 @@ func _box(
 	size: Vector3,
 	position_value: Vector3,
 	color: Color,
-	rotation_value: Vector3 = Vector3.ZERO
+	rotation_value: Vector3 = Vector3.ZERO,
+	texture_path: String = "",
+	uv_scale: Vector3 = Vector3.ONE
 ) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
@@ -137,7 +306,7 @@ func _box(
 	item.mesh = mesh
 	item.position = position_value
 	item.rotation_degrees = rotation_value
-	item.material_override = _material(color)
+	item.material_override = _material(color, 0.0, 0.68, texture_path, uv_scale)
 	parent.add_child(item)
 	return item
 
@@ -203,36 +372,42 @@ func _label3d(
 	parent.add_child(label)
 	return label
 
-func _chair(parent: Node, pos: Vector3, yaw_deg: float, color: Color = Color("#222831")) -> Node3D:
+func _chair(parent: Node, pos: Vector3, yaw_deg: float, color: Color = Color("#365646")) -> Node3D:
 	var chair := Node3D.new()
 	chair.position = pos
 	chair.rotation_degrees.y = yaw_deg
 	parent.add_child(chair)
-	_box(chair, "Seat", Vector3(0.70, 0.12, 0.68), Vector3(0, 0.53, 0), color)
-	_box(chair, "Back", Vector3(0.70, 0.88, 0.12), Vector3(0, 1.00, 0.29), color)
-	_box(chair, "LegL", Vector3(0.10, 0.55, 0.10), Vector3(-0.27, 0.27, 0.22), Color("#15181c"))
-	_box(chair, "LegR", Vector3(0.10, 0.55, 0.10), Vector3(0.27, 0.27, 0.22), Color("#15181c"))
+	_box(chair, "Seat", Vector3(0.70, 0.12, 0.68), Vector3(0, 0.53, 0), color, Vector3.ZERO, TEX_LEATHER, Vector3(1.5, 1.5, 1.5))
+	_box(chair, "Back", Vector3(0.70, 0.88, 0.12), Vector3(0, 1.00, 0.29), color, Vector3.ZERO, TEX_LEATHER, Vector3(1.5, 1.5, 1.5))
+	_box(chair, "LegL", Vector3(0.10, 0.55, 0.10), Vector3(-0.27, 0.27, 0.22), Color("#5b402f"), Vector3.ZERO, TEX_WOOD, Vector3.ONE)
+	_box(chair, "LegR", Vector3(0.10, 0.55, 0.10), Vector3(0.27, 0.27, 0.22), Color("#5b402f"), Vector3.ZERO, TEX_WOOD, Vector3.ONE)
 	return chair
 
 func _podium(parent: Node, pos: Vector3, name_text: String) -> Node3D:
 	var podium := Node3D.new()
 	podium.position = pos
 	parent.add_child(podium)
-	_box(podium, "Base", Vector3(1.45, 0.18, 0.95), Vector3(0, 0.09, 0), Color("#20242c"))
-	_box(podium, "Body", Vector3(1.15, 1.18, 0.72), Vector3(0, 0.68, 0), Color("#2f353e"))
-	_box(podium, "Top", Vector3(1.45, 0.14, 0.88), Vector3(0, 1.30, 0), Color("#15181d"))
-	var label := _label3d(podium, name_text, Vector3(0, 0.78, 0.37), 56, 0.0032, Color("#f5f2e8"))
-	label.rotation_degrees = Vector3(0, 180, 0)
+	_box(podium, "Base", Vector3(1.45, 0.18, 0.95), Vector3(0, 0.09, 0), Color("#745039"), Vector3.ZERO, TEX_WOOD, Vector3(2.0, 2.0, 2.0))
+	_box(podium, "Body", Vector3(1.15, 1.18, 0.72), Vector3(0, 0.68, 0), Color("#81583d"), Vector3.ZERO, TEX_WOOD, Vector3(1.5, 1.5, 1.5))
+	_box(podium, "Top", Vector3(1.45, 0.14, 0.88), Vector3(0, 1.30, 0), Color("#5b3d2d"), Vector3.ZERO, TEX_WOOD, Vector3(2.0, 2.0, 2.0))
+	_label3d(podium, name_text, Vector3(0, 0.78, 0.37), 56, 0.0032, Color("#f5f2e8"))
 	return podium
 
-func _desk(parent: Node, pos: Vector3, size: Vector3, color: Color) -> Node3D:
+func _desk(
+	parent: Node,
+	pos: Vector3,
+	size: Vector3,
+	color: Color,
+	texture_path: String = "",
+	uv_scale: Vector3 = Vector3.ONE
+) -> Node3D:
 	var desk := Node3D.new()
 	desk.position = pos
 	parent.add_child(desk)
-	_box(desk, "Top", Vector3(size.x, 0.16, size.z), Vector3(0, 0.88, 0), color)
-	_box(desk, "Front", Vector3(size.x, 0.84, 0.12), Vector3(0, 0.44, -size.z * 0.43), color.darkened(0.12))
-	_box(desk, "LegL", Vector3(0.16, 0.86, size.z * 0.75), Vector3(-size.x * 0.42, 0.43, 0), color.darkened(0.18))
-	_box(desk, "LegR", Vector3(0.16, 0.86, size.z * 0.75), Vector3(size.x * 0.42, 0.43, 0), color.darkened(0.18))
+	_box(desk, "Top", Vector3(size.x, 0.16, size.z), Vector3(0, 0.88, 0), color, Vector3.ZERO, texture_path, uv_scale)
+	_box(desk, "Front", Vector3(size.x, 0.84, 0.12), Vector3(0, 0.44, -size.z * 0.43), color.darkened(0.08), Vector3.ZERO, texture_path, uv_scale)
+	_box(desk, "LegL", Vector3(0.16, 0.86, size.z * 0.75), Vector3(-size.x * 0.42, 0.43, 0), color.darkened(0.14), Vector3.ZERO, texture_path, uv_scale)
+	_box(desk, "LegR", Vector3(0.16, 0.86, size.z * 0.75), Vector3(size.x * 0.42, 0.43, 0), color.darkened(0.14), Vector3.ZERO, texture_path, uv_scale)
 	return desk
 
 func _screen(parent: Node, pos: Vector3, rotation_y: float, text_value: String, width: float = 1.65) -> Node3D:
@@ -241,19 +416,46 @@ func _screen(parent: Node, pos: Vector3, rotation_y: float, text_value: String, 
 	screen.rotation_degrees.y = rotation_y
 	parent.add_child(screen)
 	_box(screen, "Monitor", Vector3(width, 0.95, 0.10), Vector3.ZERO, Color("#11161d"))
-	_box(screen, "Display", Vector3(width - 0.12, 0.82, 0.015), Vector3(0, 0, -0.058), SCREEN)
-	var label := _label3d(screen, text_value, Vector3(0, 0, -0.072), 48, 0.0026, Color("#86e0d3"))
-	label.rotation_degrees = Vector3(0, 180, 0)
+	# The player sits on local +Z, so the display/text belongs on the +Z face.
+	_box(screen, "Display", Vector3(width - 0.12, 0.82, 0.015), Vector3(0, 0, 0.058), SCREEN)
+	_label3d(screen, text_value, Vector3(0, 0, 0.072), 48, 0.0026, Color("#86e0d3"))
 	return screen
 
-func _console_button(parent: Node, pos: Vector3, color: Color, label_text: String) -> Node3D:
+func _console_button(
+	parent: Node,
+	pos: Vector3,
+	color: Color,
+	label_text: String,
+	action_id: String = ""
+) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
 	parent.add_child(root)
-	_cylinder(root, "ButtonBase", 0.22, 0.11, Vector3.ZERO, Color("#171a1f"))
-	_cylinder(root, "Button", 0.17, 0.12, Vector3(0, 0.10, 0), color)
-	var label := _label3d(root, label_text, Vector3(0, 0.06, 0.33), 38, 0.0024, Color("#f3f4f6"))
-	label.rotation_degrees = Vector3(-90, 180, 0)
+
+	# Compact physical controls with a forgiving invisible click target.
+	_cylinder(root, "ButtonBase", 0.125, 0.055, Vector3.ZERO, Color("#171a1f"))
+	_cylinder(root, "Button", 0.088, 0.065, Vector3(0, 0.055, 0), color)
+
+	var label := _label3d(root, label_text, Vector3(0, 0.18, 0), 30, 0.0017, Color("#f3f4f6"))
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+
+	var area := Area3D.new()
+	area.name = "InteractionArea"
+	area.collision_layer = INTERACT_LAYER
+	area.collision_mask = 0
+	area.set_meta("mp_action", action_id if not action_id.is_empty() else label_text)
+	area.set_meta("mp_label", label_text)
+	root.add_child(area)
+
+	var collision := CollisionShape3D.new()
+	collision.name = "InteractionShape"
+	collision.position = Vector3(0, 0.075, 0)
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.16
+	shape.height = 0.18
+	collision.shape = shape
+	area.add_child(collision)
+
 	return root
 
 func _make_character(
@@ -362,13 +564,13 @@ func _set_character_local(person: Node3D) -> void:
 		# Other clients / preview roles still see the real 3D model.
 		local_character.visible = false
 
-func _create_camera(pos: Vector3, target: Vector3) -> void:
+func _create_camera(pos: Vector3, target: Vector3, fov_value: float = 76.0) -> void:
 	if arena_camera != null and is_instance_valid(arena_camera):
 		arena_camera.queue_free()
 	arena_camera = Camera3D.new()
 	arena_camera.name = "RoleCamera"
 	arena_camera.position = pos
-	arena_camera.fov = 76.0
+	arena_camera.fov = fov_value
 	arena_camera.near = 0.05
 	arena_camera.current = true
 	arena_root.add_child(arena_camera)
@@ -381,16 +583,17 @@ func _create_camera(pos: Vector3, target: Vector3) -> void:
 # ============================================================
 
 func _build_debate_room() -> void:
-	# Room shell
-	_box(arena_root, "Floor", Vector3(20, 0.20, 18), Vector3(0, -0.10, 4.5), Color("#24272e"))
-	_box(arena_root, "Stage", Vector3(13.8, 0.28, 5.0), Vector3(0, 0.14, 0.3), Color("#3a3330"))
-	_box(arena_root, "BackWall", Vector3(18.0, 6.5, 0.25), Vector3(0, 3.25, -2.35), Color("#182334"))
-	_box(arena_root, "LeftWall", Vector3(0.25, 6.5, 18), Vector3(-9.0, 3.25, 4.5), Color("#1c2027"))
-	_box(arena_root, "RightWall", Vector3(0.25, 6.5, 18), Vector3(9.0, 3.25, 4.5), Color("#1c2027"))
-	_box(arena_root, "Ceiling", Vector3(18, 0.20, 18), Vector3(0, 6.5, 4.5), Color("#161a20"))
+	# Room shell — textured instead of flat grey blocks.
+	_box(arena_root, "Floor", Vector3(20, 0.20, 18), Vector3(0, -0.10, 4.5), Color("#8f8271"), Vector3.ZERO, TEX_RUG, Vector3(4.0, 4.0, 4.0))
+	_box(arena_root, "Stage", Vector3(13.8, 0.28, 5.0), Vector3(0, 0.14, 0.3), Color("#76543d"), Vector3.ZERO, TEX_WOOD, Vector3(5.0, 2.0, 2.0))
+	_box(arena_root, "BackWall", Vector3(18.0, 6.5, 0.25), Vector3(0, 3.25, -2.35), Color("#b9aa95"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "LeftWall", Vector3(0.25, 6.5, 18), Vector3(-9.0, 3.25, 4.5), Color("#ad9f8d"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "RightWall", Vector3(0.25, 6.5, 18), Vector3(9.0, 3.25, 4.5), Color("#ad9f8d"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "Ceiling", Vector3(18, 0.20, 18), Vector3(0, 6.5, 4.5), Color("#c9beac"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 4.0, 4.0))
+	_box(arena_root, "StageTrim", Vector3(14.2, 0.18, 0.20), Vector3(0, 0.29, 2.74), Color("#c3a96a"), Vector3.ZERO, TEX_MARBLE, Vector3(4.0, 1.0, 1.0))
 
 	# Neutral debate branding / stage features.
-	_box(arena_root, "BackdropPanel", Vector3(9.0, 3.7, 0.18), Vector3(0, 3.05, -2.18), Color("#243750"))
+	_box(arena_root, "BackdropPanel", Vector3(9.0, 3.7, 0.18), Vector3(0, 3.05, -2.18), Color("#36516e"), Vector3.ZERO, TEX_LEATHER, Vector3(3.0, 2.0, 2.0))
 	_label3d(arena_root, "PRESIDENTIAL DEBATE", Vector3(0, 4.00, -2.05), 92, 0.0050, Color("#f0eadb"))
 	_label3d(arena_root, "SIMULATED STUDIOS", Vector3(0, 3.25, -2.04), 42, 0.0032, GOLD)
 
@@ -403,27 +606,42 @@ func _build_debate_room() -> void:
 	debate_characters["BIDEN"] = biden
 
 	# Podium interrupt controls.
-	_console_button(arena_root, Vector3(-2.45, 1.43, 0.67), Color("#bd2930"), "INTERRUPT")
-	_console_button(arena_root, Vector3(3.15, 1.43, 0.67), Color("#315b9a"), "INTERRUPT")
+	_console_button(arena_root, Vector3(-2.45, 1.43, 0.67), Color("#bd2930"), "INTERRUPT", "DEBATE_TRUMP_INTERRUPT")
+	_console_button(arena_root, Vector3(3.15, 1.43, 0.67), Color("#315b9a"), "INTERRUPT", "DEBATE_BIDEN_INTERRUPT")
 
 	# Moderator desk and real 3D moderator.
-	var moderator_desk := _desk(arena_root, Vector3(0, 0, 3.05), Vector3(3.6, 0, 1.15), Color("#353b45"))
-	_screen(moderator_desk, Vector3(0, 1.48, -0.12), 0.0, "02:00\nQUESTION 1", 1.75)
-	_console_button(moderator_desk, Vector3(-0.75, 1.05, -0.15), Color("#b52b31"), "MUTE T")
-	_console_button(moderator_desk, Vector3(0.0, 1.05, -0.15), Color("#c7a85e"), "NEXT")
-	_console_button(moderator_desk, Vector3(0.75, 1.05, -0.15), Color("#315b9a"), "MUTE B")
-	_chair(arena_root, Vector3(0, 0, 3.95), 0.0, Color("#222831"))
+	var moderator_desk := _desk(arena_root, Vector3(0, 0, 3.05), Vector3(3.6, 0, 1.15), Color("#76513a"), TEX_WOOD, Vector3(2.0, 2.0, 2.0))
+	# Keep the monitor low and to the moderator's left so it cannot block first-person view.
+	_screen(moderator_desk, Vector3(-1.15, 1.17, -0.14), 0.0, "02:00\nQUESTION 1", 1.02)
+	_console_button(moderator_desk, Vector3(-0.75, 1.05, -0.15), Color("#b52b31"), "MUTE T", "MOD_MUTE_TRUMP")
+	_console_button(moderator_desk, Vector3(0.0, 1.05, -0.15), Color("#c7a85e"), "NEXT", "MOD_NEXT")
+	_console_button(moderator_desk, Vector3(0.75, 1.05, -0.15), Color("#315b9a"), "MUTE B", "MOD_MUTE_BIDEN")
+	_chair(arena_root, Vector3(0, 0, 3.95), 0.0, Color("#365646"))
 	var moderator := _make_character("MODERATOR", Vector3(0, 0, 3.85), 0.0, true, 0)
 	debate_characters["MODERATOR"] = moderator
 
-	# Audience seating and 3D NPCs.
+	# Audience seating and 3D NPCs. Each row is slightly raised so people in
+	# front no longer occupy most of an audience player's view.
 	var idx: int = 0
 	for row in range(3):
+		var riser_height: float = float(row) * 0.18
+		if row > 0:
+			_box(
+				arena_root,
+				"AudienceRiser_%d" % row,
+				Vector3(14.2, riser_height, 2.10),
+				Vector3(0, riser_height * 0.5, 6.4 + float(row) * 2.25),
+				Color("#70513d"),
+				Vector3.ZERO,
+				TEX_WOOD,
+				Vector3(4.0, 1.0, 1.0)
+			)
 		for col in range(6):
 			var seat_x: float = -5.75 + float(col) * 2.30
 			var seat_z: float = 6.4 + float(row) * 2.25
-			var seat_pos := Vector3(seat_x, 0, seat_z)
-			_chair(arena_root, seat_pos, 0.0, Color("#242a32"))
+			var seat_pos := Vector3(seat_x, riser_height, seat_z)
+			var chair_color := Color("#365646") if (col + row) % 2 == 0 else Color("#31475c")
+			_chair(arena_root, seat_pos, 0.0, chair_color)
 			var audience := _make_character("AUDIENCE", seat_pos + Vector3(0, 0, 0.02), 0.0, true, idx)
 			audience_characters.append(audience)
 			idx += 1
@@ -465,7 +683,7 @@ func _set_debate_role(role_name: String) -> void:
 		_create_camera(Vector3(2.8, 1.66, -0.12), Vector3(0, 1.25, 4.5))
 	elif role_name == "MODERATOR":
 		_set_character_local(debate_characters["MODERATOR"] as Node3D)
-		_create_camera(Vector3(0, 1.48, 3.82), Vector3(0, 1.28, 0.45))
+		_create_camera(Vector3(0, 1.72, 3.80), Vector3(0, 1.48, 0.35))
 	else:
 		var seat_index: int = 7
 		if role_name.begins_with("AUDIENCE_"):
@@ -475,7 +693,9 @@ func _set_debate_role(role_name: String) -> void:
 		var col: int = seat_index % 6
 		var seat_x: float = -5.75 + float(col) * 2.30
 		var seat_z: float = 6.4 + float(row) * 2.25
-		_create_camera(Vector3(seat_x, 1.46, seat_z), Vector3(0, 1.35, 0.5))
+		var seat_height: float = float(row) * 0.18
+		# Raised eye point gives the audience a clear view over the row ahead.
+		_create_camera(Vector3(seat_x, seat_height + 1.76, seat_z), Vector3(0, 1.48, 0.45))
 	role_changed.emit(role_name)
 
 # ============================================================
@@ -483,19 +703,22 @@ func _set_debate_role(role_name: String) -> void:
 # ============================================================
 
 func _build_crisis_room() -> void:
-	_box(arena_root, "Floor", Vector3(18, 0.20, 16), Vector3(0, -0.10, 0), Color("#20262c"))
-	_box(arena_root, "BackWall", Vector3(18, 5.5, 0.25), Vector3(0, 2.75, -8.0), Color("#1b252c"))
-	_box(arena_root, "FrontWall", Vector3(18, 5.5, 0.25), Vector3(0, 2.75, 8.0), Color("#1b252c"))
-	_box(arena_root, "LeftWall", Vector3(0.25, 5.5, 16), Vector3(-9.0, 2.75, 0), Color("#1b252c"))
-	_box(arena_root, "RightWall", Vector3(0.25, 5.5, 16), Vector3(9.0, 2.75, 0), Color("#1b252c"))
-	_box(arena_root, "Ceiling", Vector3(18, 0.20, 16), Vector3(0, 5.5, 0), Color("#151a1f"))
+	# Warm materials and actual texture maps replace the old flat-grey prototype.
+	_box(arena_root, "Floor", Vector3(18, 0.20, 16), Vector3(0, -0.10, 0), Color("#736b61"), Vector3.ZERO, TEX_RUG, Vector3(4.0, 4.0, 4.0))
+	_box(arena_root, "BackWall", Vector3(18, 5.5, 0.25), Vector3(0, 2.75, -8.0), Color("#b7aa95"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "FrontWall", Vector3(18, 5.5, 0.25), Vector3(0, 2.75, 8.0), Color("#b7aa95"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "LeftWall", Vector3(0.25, 5.5, 16), Vector3(-9.0, 2.75, 0), Color("#aa9d8a"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "RightWall", Vector3(0.25, 5.5, 16), Vector3(9.0, 2.75, 0), Color("#aa9d8a"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 2.0, 2.0))
+	_box(arena_root, "Ceiling", Vector3(18, 0.20, 16), Vector3(0, 5.5, 0), Color("#c8bdab"), Vector3.ZERO, TEX_PLASTER, Vector3(4.0, 4.0, 4.0))
+	_box(arena_root, "BackWallLowerTrim", Vector3(18, 1.05, 0.18), Vector3(0, 0.55, -7.84), Color("#684934"), Vector3.ZERO, TEX_WOOD, Vector3(5.0, 1.0, 1.0))
+	_box(arena_root, "FrontWallLowerTrim", Vector3(18, 1.05, 0.18), Vector3(0, 0.55, 7.84), Color("#684934"), Vector3.ZERO, TEX_WOOD, Vector3(5.0, 1.0, 1.0))
 
 	_label3d(arena_root, "CRISIS COORDINATION ROOM", Vector3(0, 4.2, -7.82), 82, 0.0048, Color("#e8edf2"))
 	_label3d(arena_root, "FOUR TRUMPS. FOUR JOBS. ONE PROBLEM.", Vector3(0, 3.55, -7.81), 38, 0.0030, GOLD)
 
 	# Central coordination table.
-	_desk(arena_root, Vector3(0, 0, 0), Vector3(7.0, 0, 4.4), Color("#343b42"))
-	_box(arena_root, "TableInset", Vector3(5.8, 0.05, 3.2), Vector3(0, 1.00, 0), Color("#172a31"))
+	_desk(arena_root, Vector3(0, 0, 0), Vector3(7.0, 0, 4.4), Color("#76513a"), TEX_WOOD, Vector3(3.0, 2.0, 2.0))
+	_box(arena_root, "TableInset", Vector3(5.8, 0.05, 3.2), Vector3(0, 1.00, 0), Color("#315644"), Vector3.ZERO, TEX_LEATHER, Vector3(2.5, 2.0, 2.0))
 
 	# Role stations.
 	_build_crisis_station("INTEL", Vector3(0, 0, -4.1), 180.0, "MISSION ORDER\nZONE C\nLAUNCH: 3", false)
@@ -532,16 +755,29 @@ func _build_crisis_station(
 	station.rotation_degrees.y = yaw_deg
 	arena_root.add_child(station)
 
-	_chair(station, Vector3(0, 0, 0.65), 0.0, Color("#242b33"))
-	var console := _desk(station, Vector3(0, 0, -0.10), Vector3(2.75, 0, 1.25), Color("#303840"))
+	_chair(station, Vector3(0, 0, 0.65), 0.0, Color("#365646"))
+	var console := _desk(station, Vector3(0, 0, -0.10), Vector3(2.75, 0, 1.25), Color("#6d4b36"), TEX_WOOD, Vector3(2.0, 1.5, 1.5))
 	_screen(console, Vector3(0, 1.55, -0.35), 0.0, screen_text, 2.10)
 
 	if has_launch_controls:
-		_console_button(console, Vector3(-0.52, 1.08, -0.15), Color("#c52832"), "LAUNCH")
-		_console_button(console, Vector3(0.52, 1.08, -0.15), Color("#d6b54f"), "INTERCEPT")
+		_console_button(console, Vector3(-0.52, 1.08, -0.15), Color("#c52832"), "LAUNCH", "CRISIS_LAUNCH")
+		_console_button(console, Vector3(0.52, 1.08, -0.15), Color("#d6b54f"), "INTERCEPT", "CRISIS_INTERCEPT")
 	else:
-		_console_button(console, Vector3(-0.42, 1.08, -0.15), Color("#4f7b86"), "ACTION")
-		_console_button(console, Vector3(0.42, 1.08, -0.15), Color("#b9954c"), "CONFIRM")
+		var action_prefix: String = role_name.to_upper()
+		_console_button(
+			console,
+			Vector3(-0.42, 1.08, -0.15),
+			Color("#4f7b86"),
+			"ACTION",
+			"CRISIS_" + action_prefix + "_ACTION"
+		)
+		_console_button(
+			console,
+			Vector3(0.42, 1.08, -0.15),
+			Color("#b9954c"),
+			"CONFIRM",
+			"CRISIS_" + action_prefix + "_CONFIRM"
+		)
 
 func _add_role_placard(pos: Vector3, yaw_deg: float, text_value: String) -> void:
 	var placard := Node3D.new()
@@ -549,8 +785,7 @@ func _add_role_placard(pos: Vector3, yaw_deg: float, text_value: String) -> void
 	placard.rotation_degrees.y = yaw_deg
 	arena_root.add_child(placard)
 	_box(placard, "Plate", Vector3(1.4, 0.34, 0.06), Vector3.ZERO, Color("#171a1f"))
-	var label := _label3d(placard, text_value, Vector3(0, 0, -0.04), 40, 0.0024, Color("#f0d681"))
-	label.rotation_degrees = Vector3(0, 180, 0)
+	_label3d(placard, text_value, Vector3(0, 0, 0.04), 40, 0.0024, Color("#f0d681"))
 
 func _set_crisis_role(role_name: String) -> void:
 	for key in crisis_characters.keys():
@@ -564,12 +799,12 @@ func _set_crisis_role(role_name: String) -> void:
 	_set_character_local(crisis_characters[role_name] as Node3D)
 
 	if role_name == "INTEL":
-		_create_camera(Vector3(0, 1.46, -4.70), Vector3(0, 1.15, -0.35))
+		_create_camera(Vector3(0, 1.74, -5.55), Vector3(0, 1.34, -3.65), 82.0)
 	elif role_name == "LAUNCH":
-		_create_camera(Vector3(0, 1.46, 4.70), Vector3(0, 1.15, 0.35))
+		_create_camera(Vector3(0, 1.74, 5.55), Vector3(0, 1.34, 3.65), 82.0)
 	elif role_name == "RADAR":
-		_create_camera(Vector3(5.60, 1.46, 0), Vector3(0.35, 1.15, 0))
+		_create_camera(Vector3(6.45, 1.74, 0), Vector3(4.35, 1.34, 0), 82.0)
 	else:
-		_create_camera(Vector3(-5.60, 1.46, 0), Vector3(-0.35, 1.15, 0))
+		_create_camera(Vector3(-6.45, 1.74, 0), Vector3(-4.35, 1.34, 0), 82.0)
 
 	role_changed.emit(role_name)

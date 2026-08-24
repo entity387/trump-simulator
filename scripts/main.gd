@@ -118,7 +118,7 @@ var lifetime_bombs := 0
 var power := 1
 var stage := 1
 var difficulty_index := 1
-var subtitles_enabled := false
+var subtitles_enabled := true
 var fullscreen_enabled := false
 var purchased_upgrades: Array[String] = []
 var current_level_index: int = 0
@@ -638,7 +638,7 @@ func _dev_start_stage(target_stage: int) -> void:
 	chaos = 0.0
 	_reset_runtime_events()
 	_refresh_stage_unlocks()
-	_show_status("DEV TEST — STAGE %d: %s" % [safe_stage, str(STAGES[safe_stage - 1]["name"])], 2.0)
+	_show_status("STAGE %d — %s" % [safe_stage, str(STAGES[safe_stage - 1]["name"])], 2.0)
 	_update_ui()
 
 func _dev_start_level(target_level: int) -> void:
@@ -653,7 +653,7 @@ func _dev_start_level(target_level: int) -> void:
 	level_launches = 0
 	campaign_complete = false
 	_apply_current_level(true, true)
-	_show_status("DEV MAP %d/%d — %s" % [safe_level + 1, CAMPAIGN_LEVELS.size(), str(_current_level_data()["name"])], 3.0)
+	_show_status("MAP %d/%d — %s" % [safe_level + 1, CAMPAIGN_LEVELS.size(), str(_current_level_data()["name"])], 3.0)
 
 func _current_level_data() -> Dictionary:
 	return CAMPAIGN_LEVELS[clampi(current_level_index, 0, CAMPAIGN_LEVELS.size() - 1)]
@@ -2610,7 +2610,7 @@ func _load_settings() -> void:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return
 
-	subtitles_enabled = bool(parsed.get("subtitles", false))
+	subtitles_enabled = true
 	fullscreen_enabled = bool(parsed.get("fullscreen", false))
 	difficulty_index = clampi(int(parsed.get("difficulty_index", 1)), 0, DIFFICULTIES.size() - 1)
 
@@ -3915,11 +3915,6 @@ func _build_settings_menu() -> void:
 	var mirror := _menu_button("OPEN MIRROR", Vector2(90, 216), settings_menu)
 	mirror.pressed.connect(_open_mirror)
 
-	var note := Label.new()
-	note.text = "Subtitles are OFF by default."
-	note.position = Vector2(145, 273)
-	note.add_theme_font_size_override("font_size", 12)
-	settings_menu.add_child(note)
 
 	var close := _menu_button("CLOSE", Vector2(90, 330), settings_menu)
 	close.pressed.connect(_close_settings)
@@ -4259,21 +4254,12 @@ func _build_dev_ui() -> void:
 	dev_title.add_theme_font_size_override("font_size", 30)
 	dev_panel.add_child(dev_title)
 
-	var dev_note := Label.new()
-	dev_note.text = "HOME-MENU TEST TOOLS • DEV SESSIONS DO NOT OVERWRITE THE NORMAL SAVE"
-	dev_note.position = Vector2(0, 68)
-	dev_note.size = Vector2(800, 24)
-	dev_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	dev_note.add_theme_font_size_override("font_size", 11)
-	dev_note.modulate = Color("#9fb0c1")
-	dev_panel.add_child(dev_note)
-
 	var preview := _menu_button("VIEW ALL MAP PREVIEWS", Vector2(240, 108), dev_panel)
 	preview.size = Vector2(320, 42)
 	preview.pressed.connect(_open_dev_map_preview)
 
 	var stage_header := Label.new()
-	stage_header.text = "INSTANT MAP LOADER — DEV TEST ONLY"
+	stage_header.text = "INSTANT MAP LOADER"
 	stage_header.position = Vector2(0, 162)
 	stage_header.size = Vector2(800, 25)
 	stage_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -4289,7 +4275,7 @@ func _build_dev_ui() -> void:
 		map_button.pressed.connect(_dev_start_level.bind(i))
 
 	var mp_header := Label.new()
-	mp_header.text = "MULTIPLAYER 3D MAP TEST"
+	mp_header.text = "MULTIPLAYER MAPS"
 	mp_header.position = Vector2(0, 470)
 	mp_header.size = Vector2(800, 24)
 	mp_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -4316,7 +4302,7 @@ func _build_dev_ui() -> void:
 	dev_map_preview.visible = false
 
 	var preview_title := Label.new()
-	preview_title.text = "ALL CAMPAIGN MAPS — DEVELOPMENT PREVIEW"
+	preview_title.text = "ALL CAMPAIGN MAPS"
 	preview_title.position = Vector2(0, 14)
 	preview_title.size = Vector2(1170, 30)
 	preview_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

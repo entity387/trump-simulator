@@ -1,0 +1,12 @@
+Simulated Studios native intro static checks
+============================================
+PASS - project.godot boots res://intro.tscn
+PASS - intro transitions only to res://main.tscn after dismissal
+PASS - res://logo.png is present and loaded externally
+PASS - intro uses no HTML/web view
+PASS - keyboard, mouse, and gamepad button dismissal paths exist
+PASS - 0.5 second fade transition exists
+PASS - main game scene is not instantiated under the intro
+PASS - generated GDScript delimiter/triple-quote sanity checks passed
+
+NOTE: These are static checks. Godot runtime launch was not available in the container.

@@ -3,7 +3,7 @@ extends Control
 signal close_requested
 signal launch_match(mode_name: String, role_name: String)
 
-var manager: Node
+var manager: Variant = null
 
 var panel: Panel
 var title: Label
@@ -22,8 +22,17 @@ var start_button: Button
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	manager = get_node("/root/OnlineMultiplayer")
+	z_index = 100
+	manager = get_node_or_null("/root/OnlineMultiplayer")
 	_build_shell()
+
+	if manager == null:
+		title.text = "MULTIPLAYER"
+		status.text = "MULTIPLAYER SERVICE DID NOT LOAD"
+		_clear_body()
+		_add_label("Return to the multiplayer menu and rebuild with the online scripts included.", 13)
+		_add_button("BACK", _close)
+		return
 
 	manager.status_changed.connect(_on_status_changed)
 	manager.lobby_updated.connect(_on_lobby_updated)
@@ -123,10 +132,13 @@ func show_home() -> void:
 func show_host_select() -> void:
 	_clear_body()
 	title.text = "HOST GAME"
-	status.text = "YOUR PC HOSTS THE MATCH — EOS HANDLES P2P ROUTING"
+	if manager != null and manager.has_method("host_mode_description"):
+		status.text = str(manager.call("host_mode_description"))
+	else:
+		status.text = "CHOOSE A GAME TO HOST"
 	name_input = _name_field()
-	_add_button("CRISIS ROOM — 4 PLAYERS", _host.bind("crisis"))
-	_add_button("PRESIDENTIAL DEBATE", _host.bind("debate"))
+	_add_button("HOST CRISIS ROOM", _host.bind("crisis"))
+	_add_button("HOST PRESIDENTIAL DEBATE", _host.bind("debate"))
 	_add_button("BACK", show_home)
 
 func show_join() -> void:
@@ -148,7 +160,10 @@ func show_lobby() -> void:
 	_clear_body()
 	title.text = "MULTIPLAYER LOBBY"
 
-	lobby_code = _add_label("JOIN CODE: " + (manager.join_code if not manager.join_code.is_empty() else "CONNECTING..."), 22)
+	var shown_code: String = manager.join_code if not manager.join_code.is_empty() else "CONNECTING..."
+	if bool(manager.get("local_test_host")):
+		shown_code = "LOCAL LOBBY"
+	lobby_code = _add_label("JOIN CODE: " + shown_code, 22)
 	lobby_mode = _add_label(_pretty_mode(manager.game_mode), 16)
 
 	lobby_players = RichTextLabel.new()
@@ -158,11 +173,11 @@ func show_lobby() -> void:
 	lobby_players.add_theme_font_size_override("normal_font_size", 13)
 	body.add_child(lobby_players)
 
-	role_button = _add_button("ROLE", manager.request_next_role)
-	ready_button = _add_button("READY", manager.toggle_ready)
+	role_button = _add_button("ROLE", Callable(manager, "request_next_role"))
+	ready_button = _add_button("READY", Callable(manager, "toggle_ready"))
 
 	if manager.is_host:
-		start_button = _add_button("START MATCH", manager.start_match)
+		start_button = _add_button("START MATCH", Callable(manager, "start_match"))
 	else:
 		start_button = null
 
@@ -170,10 +185,14 @@ func show_lobby() -> void:
 	_refresh_lobby()
 
 func _host(mode_name: String) -> void:
-	status.text = "CONNECTING..."
+	status.text = "STARTING HOST..."
 	await manager.host_game(mode_name, name_input.text)
 	if manager.connected:
 		show_lobby()
+	else:
+		# Keep the host screen visible and show the manager's failure text.
+		if manager.has_method("host_mode_description") and status.text == "STARTING HOST...":
+			status.text = str(manager.call("host_mode_description"))
 
 func _join() -> void:
 	status.text = "CONNECTING..."
@@ -185,7 +204,7 @@ func _leave_lobby() -> void:
 	show_home()
 
 func _close() -> void:
-	if manager.connected or manager.is_host:
+	if manager != null and (manager.connected or manager.is_host):
 		await manager.leave_session()
 	close_requested.emit()
 
@@ -224,12 +243,12 @@ func _refresh_lobby() -> void:
 		lobby_mode.text = _pretty_mode(manager.game_mode)
 
 	var lines: Array[String] = []
-	var ids := manager.players.keys()
+	var ids: Array = manager.players.keys()
 	ids.sort()
 	for peer_id in ids:
 		var p: Dictionary = manager.players[peer_id]
-		var host_mark := " [HOST]" if bool(p.get("host", false)) else ""
-		var ready_mark := " ✓ READY" if bool(p.get("ready", false)) else ""
+		var host_mark: String = " [HOST]" if bool(p.get("host", false)) else ""
+		var ready_mark: String = " ✓ READY" if bool(p.get("ready", false)) else ""
 		lines.append("[b]%s[/b]%s\n%s%s" % [
 			str(p.get("name", "Player")),
 			host_mark,

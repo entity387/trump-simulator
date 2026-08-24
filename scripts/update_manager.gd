@@ -3,7 +3,7 @@ extends Node
 signal update_available(info: Dictionary)
 signal update_status(message: String)
 
-const DEFAULT_VERSION := "1.0.0"
+const DEFAULT_VERSION := "1.1.0"
 const DEFAULT_MANIFEST_URL := "https://trumpsimulator.xyz/update.json"
 
 var available_update: Dictionary = {}
