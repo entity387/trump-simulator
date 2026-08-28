@@ -4,7 +4,7 @@
 
 When Trump Simulator reaches the home menu it quietly requests:
 
-`https://trumpsimulator.xyz/update.json`
+`https://simulatedstudios.com/updates/trump-simulator.json`
 
 If the website is unreachable, times out, returns invalid JSON, or does not
 advertise a newer version, nothing appears and the game continues normally.

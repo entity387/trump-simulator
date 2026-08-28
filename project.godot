@@ -31,9 +31,9 @@ driver/enable_input=false
 
 [trump_simulator]
 
-multiplayer/join_code_api="http://127.0.0.1:8787"
+multiplayer/lan_port=27887
+multiplayer/discovery_port=27888
 multiplayer/allow_solo_test=true
-multiplayer/allow_local_host_fallback=true
 update/current_version="1.1.0"
-update/manifest_url="https://trumpsimulator.xyz/update.json"
+update/manifest_url="https://simulatedstudios.com/updates/trump-simulator.json"
 update/check_in_editor=false
