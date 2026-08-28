@@ -13,6 +13,10 @@ const VERSION := "1.1.0"
 const SAVE_PATH := "user://savegame.json"
 const SETTINGS_PATH := "user://settings.json"
 
+const MENU_BACKGROUND_HOLD_SECONDS := 7.0
+const MENU_BACKGROUND_FADE_OUT_SECONDS := 0.42
+const MENU_BACKGROUND_FADE_IN_SECONDS := 0.55
+
 # Secret developer access. This sequence is only accepted on the unobstructed home menu.
 const DEV_SEQUENCE := [
 	KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN,
@@ -220,6 +224,15 @@ var world_load_step := "BOOT"
 var layer: CanvasLayer
 var hud_root: Control
 var menu_backdrop: ColorRect
+var transition_fade: ColorRect
+var screen_transition_active := false
+var menu_scene_fade: ColorRect
+var menu_background_arena: Node3D
+var menu_background_entries: Array[Dictionary] = []
+var menu_background_index := 0
+var menu_background_elapsed := 0.0
+var menu_background_transition_active := false
+var menu_background_cycle_active := false
 var main_menu: Panel
 var pause_menu: Panel
 var settings_menu: Panel
@@ -239,7 +252,7 @@ var multiplayer_hud_role: Label
 var multiplayer_arena: Node3D
 var multiplayer_selected_mode: String = ""
 var online_multiplayer_ui: Control
-var online_match_session := false
+var lan_match_session := false
 
 var update_panel: Panel
 var update_title_label: Label
@@ -426,6 +439,7 @@ func _set_startup_step(step_text: String) -> void:
 		startup_label.text = step_text
 
 func _process(delta: float) -> void:
+	_process_menu_background_cycle(delta)
 	_refresh_menu_backdrop()
 	if not world_ready or not game_started or paused or game_over or level_intro_active:
 		return
@@ -929,6 +943,213 @@ func _refresh_menu_backdrop() -> void:
 	should_show = should_show or (online_multiplayer_ui != null and is_instance_valid(online_multiplayer_ui) and online_multiplayer_ui.visible)
 	should_show = should_show or (update_panel != null and update_panel.visible)
 	menu_backdrop.visible = should_show
+
+func _saved_menu_level_index() -> int:
+	var saved_level := 0
+	if FileAccess.file_exists(SAVE_PATH):
+		var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+		if file != null:
+			var parsed = JSON.parse_string(file.get_as_text())
+			if typeof(parsed) == TYPE_DICTIONARY:
+				saved_level = clampi(int(parsed.get("current_level_index", 0)), 0, CAMPAIGN_LEVELS.size() - 1)
+	return saved_level
+
+func _show_saved_level_as_menu_background() -> void:
+	# Compatibility wrapper: the rotating home background starts on the player's saved map.
+	_start_menu_background_cycle(_saved_menu_level_index())
+
+func _build_menu_scene_fade() -> void:
+	menu_scene_fade = ColorRect.new()
+	menu_scene_fade.name = "MenuSceneFade"
+	menu_scene_fade.color = Color.BLACK
+	menu_scene_fade.position = Vector2.ZERO
+	menu_scene_fade.size = Vector2(1280, 720)
+	menu_scene_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_scene_fade.process_mode = Node.PROCESS_MODE_ALWAYS
+	menu_scene_fade.modulate.a = 0.0
+	menu_scene_fade.visible = false
+	layer.add_child(menu_scene_fade)
+
+func _build_menu_background_entries(start_campaign_index: int) -> void:
+	menu_background_entries.clear()
+	if CAMPAIGN_LEVELS.is_empty():
+		return
+	var start_index := clampi(start_campaign_index, 0, CAMPAIGN_LEVELS.size() - 1)
+	for offset in range(CAMPAIGN_LEVELS.size()):
+		var campaign_index := (start_index + offset) % CAMPAIGN_LEVELS.size()
+		menu_background_entries.append({
+			"type": "campaign",
+			"index": campaign_index,
+			"name": str(CAMPAIGN_LEVELS[campaign_index].get("name", "CAMPAIGN")),
+		})
+	menu_background_entries.append({"type":"multiplayer", "mode":"crisis", "role":"INTEL", "name":"CRISIS ROOM"})
+	menu_background_entries.append({"type":"multiplayer", "mode":"debate", "role":"TRUMP", "name":"PRESIDENTIAL DEBATE"})
+
+func _start_menu_background_cycle(start_campaign_index: int = -1) -> void:
+	if not world_ready:
+		return
+	var first_index := _saved_menu_level_index() if start_campaign_index < 0 else start_campaign_index
+	_build_menu_background_entries(first_index)
+	menu_background_index = 0
+	menu_background_elapsed = 0.0
+	menu_background_cycle_active = not menu_background_entries.is_empty()
+	menu_background_transition_active = false
+	if menu_scene_fade != null:
+		menu_scene_fade.visible = false
+		menu_scene_fade.modulate.a = 0.0
+	if menu_background_cycle_active:
+		_apply_menu_background_entry(menu_background_entries[0])
+
+func _stop_menu_background_cycle(clear_background_arena: bool = true) -> void:
+	menu_background_cycle_active = false
+	menu_background_elapsed = 0.0
+	menu_background_transition_active = false
+	if menu_scene_fade != null:
+		menu_scene_fade.visible = false
+		menu_scene_fade.modulate.a = 0.0
+	if clear_background_arena:
+		_clear_menu_background_arena()
+
+func _menu_background_should_cycle() -> bool:
+	if not world_ready or game_started or screen_transition_active:
+		return false
+	if multiplayer_arena != null and is_instance_valid(multiplayer_arena):
+		return false
+	return (
+		(main_menu != null and main_menu.visible)
+		or (settings_menu != null and settings_menu.visible)
+		or (credits_menu != null and credits_menu.visible)
+		or (difficulty_select_panel != null and difficulty_select_panel.visible)
+		or (dev_code_panel != null and dev_code_panel.visible)
+		or (dev_panel != null and dev_panel.visible)
+		or (dev_map_preview != null and dev_map_preview.visible)
+		or (multiplayer_menu != null and multiplayer_menu.visible)
+		or (multiplayer_role_menu != null and multiplayer_role_menu.visible)
+		or (online_multiplayer_ui != null and is_instance_valid(online_multiplayer_ui) and online_multiplayer_ui.visible)
+		or (update_panel != null and update_panel.visible)
+	)
+
+func _process_menu_background_cycle(delta: float) -> void:
+	if not menu_background_cycle_active or not _menu_background_should_cycle():
+		return
+	if menu_background_transition_active:
+		return
+	menu_background_elapsed += delta
+	if menu_background_elapsed < MENU_BACKGROUND_HOLD_SECONDS:
+		return
+	menu_background_elapsed = 0.0
+	_cycle_to_next_menu_background()
+
+func _cycle_to_next_menu_background() -> void:
+	if menu_background_transition_active or menu_background_entries.size() < 2:
+		return
+	menu_background_transition_active = true
+	if menu_scene_fade != null:
+		menu_scene_fade.visible = true
+		menu_scene_fade.modulate.a = 0.0
+		var fade_out := create_tween()
+		fade_out.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		fade_out.set_trans(Tween.TRANS_QUAD)
+		fade_out.set_ease(Tween.EASE_IN_OUT)
+		fade_out.tween_property(menu_scene_fade, "modulate:a", 1.0, MENU_BACKGROUND_FADE_OUT_SECONDS)
+		await fade_out.finished
+	if not menu_background_cycle_active:
+		menu_background_transition_active = false
+		return
+	menu_background_index = (menu_background_index + 1) % menu_background_entries.size()
+	_apply_menu_background_entry(menu_background_entries[menu_background_index])
+	await get_tree().create_timer(0.06, true, false, true).timeout
+	if menu_scene_fade != null:
+		var fade_in := create_tween()
+		fade_in.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		fade_in.set_trans(Tween.TRANS_QUAD)
+		fade_in.set_ease(Tween.EASE_IN_OUT)
+		fade_in.tween_property(menu_scene_fade, "modulate:a", 0.0, MENU_BACKGROUND_FADE_IN_SECONDS)
+		await fade_in.finished
+		menu_scene_fade.visible = false
+	menu_background_transition_active = false
+
+func _apply_menu_background_entry(entry: Dictionary) -> void:
+	var entry_type := str(entry.get("type", "campaign"))
+	if entry_type == "multiplayer":
+		_show_multiplayer_menu_background(str(entry.get("mode", "crisis")), str(entry.get("role", "INTEL")))
+		return
+	_clear_menu_background_arena()
+	if fallback_bg != null:
+		fallback_bg.visible = false
+	if visual_root != null:
+		visual_root.visible = true
+	var logical_level := current_level_index
+	current_level_index = clampi(int(entry.get("index", 0)), 0, CAMPAIGN_LEVELS.size() - 1)
+	_apply_current_level(false, false)
+	current_level_index = logical_level
+
+func _show_multiplayer_menu_background(mode_name: String, role_name: String) -> void:
+	_clear_menu_background_arena()
+	if visual_root != null:
+		visual_root.visible = false
+	if fallback_bg != null:
+		fallback_bg.visible = false
+	var arena_script := load("res://scripts/multiplayer_arena.gd") as Script
+	if arena_script == null:
+		return
+	menu_background_arena = Node3D.new()
+	menu_background_arena.name = "MenuBackgroundMultiplayerArena"
+	menu_background_arena.set_script(arena_script)
+	add_child(menu_background_arena)
+	menu_background_arena.set_process_unhandled_input(false)
+	menu_background_arena.set_process_input(false)
+	menu_background_arena.set("mouse_look_enabled", false)
+	menu_background_arena.call("build_mode", mode_name, role_name)
+	_hide_menu_background_canvas_layers(menu_background_arena)
+
+func _hide_menu_background_canvas_layers(node: Node) -> void:
+	for child in node.get_children():
+		if child is CanvasLayer:
+			(child as CanvasLayer).visible = false
+		_hide_menu_background_canvas_layers(child)
+
+func _clear_menu_background_arena() -> void:
+	if menu_background_arena != null and is_instance_valid(menu_background_arena):
+		menu_background_arena.queue_free()
+	menu_background_arena = null
+
+func _build_transition_fade() -> void:
+	transition_fade = ColorRect.new()
+	transition_fade.name = "ScreenTransitionFade"
+	transition_fade.color = Color.BLACK
+	transition_fade.position = Vector2.ZERO
+	transition_fade.size = Vector2(1280, 720)
+	transition_fade.mouse_filter = Control.MOUSE_FILTER_STOP
+	transition_fade.process_mode = Node.PROCESS_MODE_ALWAYS
+	transition_fade.modulate.a = 0.0
+	transition_fade.visible = false
+	layer.add_child(transition_fade)
+
+func _fade_to_black(duration: float = 0.30) -> void:
+	if transition_fade == null:
+		return
+	transition_fade.visible = true
+	transition_fade.modulate.a = 0.0
+	var tween := create_tween()
+	tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(transition_fade, "modulate:a", 1.0, duration)
+	await tween.finished
+
+func _fade_from_black(duration: float = 0.38) -> void:
+	if transition_fade == null:
+		return
+	transition_fade.visible = true
+	transition_fade.modulate.a = 1.0
+	var tween := create_tween()
+	tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(transition_fade, "modulate:a", 0.0, duration)
+	await tween.finished
+	transition_fade.visible = false
 
 # ============================================================
 # BUILD HELPERS
@@ -2243,6 +2464,7 @@ func _start_new_game() -> void:
 	if not world_ready:
 		_set_startup_step("PLEASE WAIT — THE OFFICE IS STILL LOADING")
 		return
+	_stop_menu_background_cycle(true)
 	bombs = 0
 	lifetime_bombs = 0
 	level_launches = 0
@@ -2280,7 +2502,14 @@ func _continue_game() -> void:
 	if not world_ready:
 		_set_startup_step("PLEASE WAIT — THE OFFICE IS STILL LOADING")
 		return
+	if screen_transition_active:
+		return
+	screen_transition_active = true
+	await _fade_to_black()
+	_stop_menu_background_cycle(true)
 	if not _load_game():
+		screen_transition_active = false
+		await _fade_from_black()
 		_start_new_game()
 		return
 	if campaign_complete:
@@ -2288,7 +2517,10 @@ func _continue_game() -> void:
 		main_menu.visible = true
 		if startup_label != null:
 			startup_label.text = "CAMPAIGN COMPLETE — START A NEW GAME TO PLAY AGAIN"
+		_show_saved_level_as_menu_background()
 		_update_menu_buttons()
+		await _fade_from_black()
+		screen_transition_active = false
 		return
 	game_started = true
 	paused = false
@@ -2307,8 +2539,15 @@ func _continue_game() -> void:
 	_apply_current_level(true, false)
 	_show_status("WELCOME BACK — LEVEL %d/%d • %s" % [current_level_index + 1, CAMPAIGN_LEVELS.size(), str(_current_level_data()["name"])], 2.2)
 	_update_ui()
+	await _fade_from_black()
+	screen_transition_active = false
 
 func _return_to_main_menu() -> void:
+	if screen_transition_active:
+		return
+	screen_transition_active = true
+	# Fade the active level out before revealing the menu over that same location.
+	await _fade_to_black()
 	if game_started and not game_over:
 		_save_game()
 	_reset_runtime_events()
@@ -2355,14 +2594,18 @@ func _return_to_main_menu() -> void:
 		update_panel.visible = false
 	if OnlineMultiplayer.connected or OnlineMultiplayer.is_host:
 		OnlineMultiplayer.leave_session()
-	online_match_session = false
+	lan_match_session = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	dev_sequence_index = 0
 	hud_root.visible = false
 	if visual_root != null and world_ready:
 		visual_root.visible = true
+	# Resume the rotating map showcase, starting on the campaign location the player just left.
+	_start_menu_background_cycle(current_level_index)
 	_refresh_menu_backdrop()
 	_update_menu_buttons()
+	await _fade_from_black()
+	screen_transition_active = false
 
 func _toggle_pause() -> void:
 	if not game_started or game_over:
@@ -3429,6 +3672,7 @@ func _build_ui() -> void:
 	layer.add_child(fallback_bg)
 
 	_build_visual_reboot_scene()
+	_build_menu_scene_fade()
 	_build_loading_screen()
 
 	hud_root = Control.new()
@@ -3460,6 +3704,7 @@ func _build_ui() -> void:
 	_build_dev_ui()
 	_build_level_intro_overlay()
 	_build_mirror_overlay()
+	_build_transition_fade()
 	_update_menu_buttons()
 
 func _build_loading_screen() -> void:
@@ -3588,8 +3833,8 @@ func _finish_loading_screen() -> void:
 	if visual_root != null:
 		visual_root.visible = true
 
-	# Show the menu over the ready seated-office composition.
-	_build_current_map_environment()
+	# Start the rotating home-menu showcase on the player's latest saved campaign location.
+	_start_menu_background_cycle(_saved_menu_level_index())
 	if main_menu != null:
 		main_menu.visible = true
 	_refresh_menu_backdrop()
@@ -3759,7 +4004,7 @@ func _build_update_panel() -> void:
 func _on_update_available(info: Dictionary) -> void:
 	# Never interrupt active gameplay. Update checks run from the home menu anyway,
 	# but this guard prevents a late network response from covering a match.
-	if game_started or online_match_session:
+	if game_started or lan_match_session:
 		return
 
 	pending_update_info = info.duplicate(true)
@@ -3937,7 +4182,7 @@ func _build_multiplayer_ui() -> void:
 	multiplayer_menu.add_child(title)
 
 	var note := Label.new()
-	note.text = "Play online, or use Local Practice to learn the roles and viewpoints."
+	note.text = "LAN multiplayer scans for games on your local network. Local Practice is available for learning roles and viewpoints."
 	note.position = Vector2(40, 82)
 	note.size = Vector2(480, 52)
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -3946,7 +4191,7 @@ func _build_multiplayer_ui() -> void:
 	note.modulate = Color("#aebdca")
 	multiplayer_menu.add_child(note)
 
-	var online := _menu_button("ONLINE — HOST / JOIN", Vector2(120, 150), multiplayer_menu)
+	var online := _menu_button("LAN — HOST / FIND GAMES", Vector2(120, 150), multiplayer_menu)
 	online.pressed.connect(_open_online_multiplayer)
 
 	var crisis := _menu_button("CRISIS ROOM — LOCAL PRACTICE", Vector2(120, 208), multiplayer_menu)
@@ -4045,7 +4290,7 @@ func _close_online_multiplayer() -> void:
 	_refresh_menu_backdrop()
 
 func _launch_online_multiplayer_match(mode_name: String, role_name: String) -> void:
-	online_match_session = true
+	lan_match_session = true
 	if online_multiplayer_ui != null:
 		online_multiplayer_ui.visible = false
 	_start_multiplayer_preview(mode_name, role_name)
@@ -4102,6 +4347,7 @@ func _back_to_multiplayer_games() -> void:
 	_refresh_menu_backdrop()
 
 func _start_multiplayer_preview(mode_name: String, role_name: String) -> void:
+	_stop_menu_background_cycle(true)
 	multiplayer_role_menu.visible = false
 	multiplayer_menu.visible = false
 	main_menu.visible = false
@@ -4142,8 +4388,8 @@ func _exit_multiplayer_preview() -> void:
 	if visual_root != null and world_ready:
 		visual_root.visible = true
 
-	if online_match_session:
-		online_match_session = false
+	if lan_match_session:
+		lan_match_session = false
 		await OnlineMultiplayer.leave_session()
 		if online_multiplayer_ui != null and is_instance_valid(online_multiplayer_ui):
 			online_multiplayer_ui.visible = true
@@ -4152,6 +4398,7 @@ func _exit_multiplayer_preview() -> void:
 			main_menu.visible = true
 	else:
 		multiplayer_menu.visible = true
+	_start_menu_background_cycle(_saved_menu_level_index())
 	_refresh_menu_backdrop()
 
 func _build_credits_menu() -> void:

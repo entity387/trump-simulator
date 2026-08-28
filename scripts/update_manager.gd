@@ -4,7 +4,7 @@ signal update_available(info: Dictionary)
 signal update_status(message: String)
 
 const DEFAULT_VERSION := "1.1.0"
-const DEFAULT_MANIFEST_URL := "https://trumpsimulator.xyz/update.json"
+const DEFAULT_MANIFEST_URL := "https://simulatedstudios.com/updates/trump-simulator.json"
 
 var available_update: Dictionary = {}
 var checking := false

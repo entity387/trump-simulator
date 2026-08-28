@@ -111,7 +111,7 @@
     }
   ],
   "settings_defaults": {
-    "subtitles": false,
+    "subtitles": true,
     "difficulty_index": 1
   }
 }

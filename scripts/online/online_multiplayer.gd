@@ -6,46 +6,36 @@ signal lobby_updated(players: Dictionary, join_code: String, mode: String, host:
 signal connection_state_changed(state: String)
 signal match_started(mode: String, local_role: String)
 signal voice_state_changed(state: String)
+signal lan_games_updated(games: Array)
 
-const SOCKET_ID := "trump-simulator-v1"
-const EOS_CONFIG_PATH := "res://config/eos_credentials.json"
-const EOS_BRIDGE_SOURCE := "res://scripts/eos/eos_bridge.gd.txt"
-const LOCAL_TEST_PORT := 27887
+const DEFAULT_GAME_PORT := 27887
+const DEFAULT_DISCOVERY_PORT := 27888
+const DISCOVERY_MAGIC := "TRUMP_SIMULATOR_LAN_V1"
+const DISCOVERY_INTERVAL := 0.8
+const DISCOVERY_TIMEOUT_MSEC := 3500
 
-var backend_url: String = ""
 var display_name: String = "Player"
 var game_mode: String = ""
 var join_code: String = ""
-var host_token: String = ""
-var host_product_user_id: String = ""
 var is_host := false
 var connected := false
-var eos_ready := false
-var voice_ready := false
 var players: Dictionary = {}
 var local_role := ""
 var local_ready := false
 var local_test_host := false
 
-var _bridge: Node
-var _http: HTTPRequest
-var _heartbeat_timer: Timer
+var discovered_games: Array[Dictionary] = []
+var _discovered_by_key: Dictionary = {}
+var _host_discovery_socket: PacketPeerUDP
+var _scan_socket: PacketPeerUDP
+var _scan_active := false
+var _scan_accum := 0.0
+var _game_port := DEFAULT_GAME_PORT
+var _discovery_port := DEFAULT_DISCOVERY_PORT
 
 func _ready() -> void:
-	backend_url = str(ProjectSettings.get_setting(
-		"trump_simulator/multiplayer/join_code_api",
-		"http://127.0.0.1:8787"
-	)).trim_suffix("/")
-
-	_http = HTTPRequest.new()
-	_http.name = "JoinCodeHTTP"
-	add_child(_http)
-
-	_heartbeat_timer = Timer.new()
-	_heartbeat_timer.wait_time = 45.0
-	_heartbeat_timer.one_shot = false
-	_heartbeat_timer.timeout.connect(_heartbeat_room)
-	add_child(_heartbeat_timer)
+	_game_port = int(ProjectSettings.get_setting("trump_simulator/multiplayer/lan_port", DEFAULT_GAME_PORT))
+	_discovery_port = int(ProjectSettings.get_setting("trump_simulator/multiplayer/discovery_port", DEFAULT_DISCOVERY_PORT))
 
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -53,174 +43,43 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
-func eos_plugin_available() -> bool:
-	return ClassDB.class_exists("EOSGMultiplayerPeer") or ResourceLoader.exists(
-		"res://addons/epic-online-services-godot/plugin.cfg"
-	)
-
-func _load_eos_credentials() -> Dictionary:
-	if not FileAccess.file_exists(EOS_CONFIG_PATH):
-		return {}
-	var raw := FileAccess.get_file_as_string(EOS_CONFIG_PATH)
-	var parsed: Variant = JSON.parse_string(raw)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return {}
-	return parsed as Dictionary
-
-func _create_dynamic_eos_bridge() -> bool:
-	if _bridge != null and is_instance_valid(_bridge):
-		return true
-	if not eos_plugin_available():
-		_fail("Online multiplayer is unavailable.")
-		return false
-	if not FileAccess.file_exists(EOS_BRIDGE_SOURCE):
-		_fail("EOS bridge source is missing.")
-		return false
-
-	var source := FileAccess.get_file_as_string(EOS_BRIDGE_SOURCE)
-	var bridge_script := GDScript.new()
-	bridge_script.source_code = source
-	var reload_result := bridge_script.reload()
-	if reload_result != OK:
-		_fail("Online multiplayer is unavailable.")
-		return false
-
-	_bridge = Node.new()
-	_bridge.name = "EOSBridge"
-	_bridge.set_script(bridge_script)
-	add_child(_bridge)
-	return true
-
-func online_host_available() -> bool:
-	if not eos_plugin_available():
-		return false
-
-	var credentials := _load_eos_credentials()
-	var required := [
-		"product_name", "product_version", "product_id", "sandbox_id",
-		"deployment_id", "client_id", "client_secret"
-	]
-	for key in required:
-		var value: String = str(credentials.get(key, "")).strip_edges()
-		if value.is_empty() or value.begins_with("PASTE_"):
-			return false
-
-	if backend_url.is_empty():
-		return false
-
-	var lower_backend := backend_url.to_lower()
-	if "127.0.0.1" in lower_backend or "localhost" in lower_backend:
-		return false
-
-	return true
+func _process(delta: float) -> void:
+	_poll_host_discovery()
+	if _scan_active:
+		_scan_accum += delta
+		if _scan_accum >= DISCOVERY_INTERVAL:
+			_scan_accum = 0.0
+			_send_discovery_probe()
+		_poll_scan_replies()
+		_expire_discovered_games()
 
 func host_mode_description() -> String:
-	if online_host_available():
-		return "ONLINE HOST READY — EOS P2P + JOIN CODE"
-	return "LOCAL HOST READY"
-
-func _start_local_test_host(mode_name: String) -> void:
-	var peer := ENetMultiplayerPeer.new()
-	var result: int = peer.create_server(LOCAL_TEST_PORT, 8)
-	if result != OK:
-		is_host = false
-		connected = false
-		local_test_host = false
-		_fail("Could not start a local lobby.")
-		return
-
-	multiplayer.multiplayer_peer = peer
-	connected = true
-	is_host = true
-	local_test_host = true
-	host_product_user_id = "LOCAL"
-	local_role = _default_role_for_mode(mode_name)
-	local_ready = false
-	join_code = "LOCAL-TEST"
-	host_token = ""
-	players = {
-		1: {
-			"name": display_name,
-			"role": local_role,
-			"ready": false,
-			"host": true
-		}
-	}
-
-	status_changed.emit("LOCAL LOBBY READY — START MATCH WHEN READY")
-	connection_state_changed.emit("lobby")
-	_emit_lobby()
-
-func ensure_eos_ready() -> bool:
-	if eos_ready:
-		return true
-	if not _create_dynamic_eos_bridge():
-		return false
-
-	var credentials := _load_eos_credentials()
-	var required := [
-		"product_name", "product_version", "product_id", "sandbox_id",
-		"deployment_id", "client_id", "client_secret"
-	]
-	for key in required:
-		if str(credentials.get(key, "")).strip_edges().is_empty():
-			_fail("Online multiplayer is unavailable.")
-			return false
-
-	status_changed.emit("CONNECTING TO EPIC ONLINE SERVICES...")
-	connection_state_changed.emit("eos_connecting")
-	var ok: bool = await _bridge.initialize_and_login_async(credentials)
-	if not ok:
-		_fail("Online services login failed. Please try again.")
-		return false
-
-	eos_ready = true
-	status_changed.emit("EPIC ONLINE SERVICES READY")
-	connection_state_changed.emit("eos_ready")
-	return true
+	return "LAN ONLY — VISIBLE TO DEVICES ON THIS NETWORK"
 
 func host_game(mode_name: String, player_name: String) -> void:
 	if connected or is_host:
-		await leave_session()
+		leave_session()
 
 	display_name = _clean_name(player_name)
 	game_mode = mode_name
 	is_host = true
 	local_test_host = false
-	status_changed.emit("STARTING HOST...")
+	stop_lan_scan()
+	status_changed.emit("STARTING LAN HOST...")
 	connection_state_changed.emit("hosting")
 
-	var allow_local_fallback := bool(ProjectSettings.get_setting(
-		"trump_simulator/multiplayer/allow_local_host_fallback",
-		true
-	))
-
-	if not online_host_available():
-		if allow_local_fallback:
-			_start_local_test_host(mode_name)
-			return
-		is_host = false
-		_fail("Online multiplayer is unavailable.")
-		return
-
-	if not await ensure_eos_ready():
-		if allow_local_fallback:
-			_start_local_test_host(mode_name)
-			return
-		is_host = false
-		return
-
-	var result: int = _bridge.create_server_peer(SOCKET_ID)
+	var peer := ENetMultiplayerPeer.new()
+	var result := peer.create_server(_game_port, 8)
 	if result != OK:
 		is_host = false
-		_fail("Could not create EOS P2P host.")
+		_fail("Could not start a LAN game on port %d." % _game_port)
 		return
 
-	multiplayer.multiplayer_peer = _bridge.get_peer()
+	multiplayer.multiplayer_peer = peer
 	connected = true
-	host_product_user_id = _bridge.get_local_product_user_id()
 	local_role = _default_role_for_mode(mode_name)
 	local_ready = false
+	join_code = "%s:%d" % [_best_local_address(), _game_port]
 	players = {
 		1: {
 			"name": display_name,
@@ -230,75 +89,84 @@ func host_game(mode_name: String, player_name: String) -> void:
 		}
 	}
 
-	status_changed.emit("REGISTERING JOIN CODE...")
-	var room: Dictionary = await _create_room()
-	if room.is_empty():
-		await leave_session()
-		return
-
-	join_code = str(room.get("code", ""))
-	host_token = str(room.get("host_token", ""))
-	_heartbeat_timer.start()
-	status_changed.emit("LOBBY READY — SHARE CODE %s" % join_code)
+	_start_host_discovery()
+	status_changed.emit("LAN LOBBY READY — OTHER DEVICES CAN FIND THIS GAME")
 	connection_state_changed.emit("lobby")
 	_emit_lobby()
 
-func join_game(code: String, player_name: String) -> void:
+func start_lan_scan() -> void:
+	if is_host:
+		return
+	if _scan_socket != null:
+		stop_lan_scan()
+
+	_scan_socket = PacketPeerUDP.new()
+	var bind_result := _scan_socket.bind(0, "0.0.0.0")
+	if bind_result != OK:
+		_scan_socket = null
+		_fail("Could not start LAN discovery.")
+		return
+
+	_scan_socket.set_broadcast_enabled(true)
+	_scan_active = true
+	_scan_accum = 0.0
+	_discovered_by_key.clear()
+	discovered_games.clear()
+	lan_games_updated.emit(discovered_games.duplicate(true))
+	status_changed.emit("SCANNING YOUR LOCAL NETWORK...")
+	_send_discovery_probe()
+
+func refresh_lan_scan() -> void:
+	if not _scan_active:
+		start_lan_scan()
+		return
+	_discovered_by_key.clear()
+	discovered_games.clear()
+	lan_games_updated.emit(discovered_games.duplicate(true))
+	status_changed.emit("SCANNING YOUR LOCAL NETWORK...")
+	_send_discovery_probe()
+
+func stop_lan_scan() -> void:
+	_scan_active = false
+	_scan_accum = 0.0
+	if _scan_socket != null:
+		_scan_socket.close()
+	_scan_socket = null
+
+func join_lan_game(address: String, port: int, mode_name: String, player_name: String) -> void:
 	if connected or is_host:
-		await leave_session()
+		leave_session()
 
 	display_name = _clean_name(player_name)
-	join_code = _normalise_code(code)
-	if join_code.is_empty():
-		_fail("Enter a join code.")
-		return
-
-	status_changed.emit("LOOKING UP %s..." % join_code)
-	connection_state_changed.emit("joining")
-
-	var room: Dictionary = await _resolve_room(join_code)
-	if room.is_empty():
-		return
-
-	game_mode = str(room.get("mode", ""))
-	host_product_user_id = str(room.get("host_user_id", ""))
-	if game_mode.is_empty() or host_product_user_id.is_empty():
-		_fail("Join-code response was incomplete.")
-		return
-
-	if not await ensure_eos_ready():
-		return
-
-	var result: int = _bridge.create_client_peer(SOCKET_ID, host_product_user_id)
-	if result != OK:
-		_fail("Could not start EOS P2P client.")
-		return
-
+	game_mode = mode_name
 	is_host = false
-	multiplayer.multiplayer_peer = _bridge.get_peer()
-	status_changed.emit("CONNECTING TO HOST...")
+	local_test_host = false
+	join_code = "%s:%d" % [address, port]
+	stop_lan_scan()
+	status_changed.emit("CONNECTING TO %s..." % address)
 	connection_state_changed.emit("connecting")
 
+	var peer := ENetMultiplayerPeer.new()
+	var result := peer.create_client(address, port)
+	if result != OK:
+		_fail("Could not start the LAN connection.")
+		return
+
+	multiplayer.multiplayer_peer = peer
+
 func leave_session() -> void:
-	_heartbeat_timer.stop()
-	if is_host and not local_test_host and not join_code.is_empty() and not host_token.is_empty():
-		await _delete_room()
-
-	if _bridge != null and is_instance_valid(_bridge):
-		_bridge.close_peer()
-
+	stop_lan_scan()
+	_stop_host_discovery()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	players.clear()
 	connected = false
 	is_host = false
 	game_mode = ""
 	join_code = ""
-	host_token = ""
-	host_product_user_id = ""
 	local_role = ""
 	local_ready = false
 	local_test_host = false
-	status_changed.emit("OFFLINE")
+	status_changed.emit("LAN MULTIPLAYER OFFLINE")
 	connection_state_changed.emit("offline")
 	_emit_lobby()
 
@@ -329,8 +197,6 @@ func start_match() -> void:
 	_broadcast_match_start()
 
 func _can_host_start() -> bool:
-	# Solo-start is kept enabled for development so Scarlett can test networking
-	# and role cameras without needing four PCs. Turn this off before release.
 	var allow_solo := bool(ProjectSettings.get_setting(
 		"trump_simulator/multiplayer/allow_solo_test",
 		true
@@ -449,18 +315,18 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 func _on_connected_to_server() -> void:
 	connected = true
-	status_changed.emit("CONNECTED — JOINING LOBBY")
+	status_changed.emit("CONNECTED TO LAN HOST")
 	connection_state_changed.emit("lobby")
 	_register_player.rpc_id(1, display_name)
 
 func _on_connection_failed() -> void:
-	_fail("Could not connect to the host.")
 	connected = false
+	_fail("Could not connect to the LAN host.")
 
 func _on_server_disconnected() -> void:
 	connected = false
 	players.clear()
-	status_changed.emit("HOST DISCONNECTED")
+	status_changed.emit("LAN HOST DISCONNECTED")
 	connection_state_changed.emit("host_disconnected")
 	_emit_lobby()
 
@@ -503,6 +369,120 @@ func _role_is_available(role_name: String, ignore_peer: int = -1) -> bool:
 			return false
 	return role_name in _roles_for_mode()
 
+func _start_host_discovery() -> void:
+	_stop_host_discovery()
+	_host_discovery_socket = PacketPeerUDP.new()
+	var result := _host_discovery_socket.bind(_discovery_port, "0.0.0.0")
+	if result != OK:
+		_host_discovery_socket = null
+		status_changed.emit("LAN LOBBY READY — AUTOMATIC DISCOVERY UNAVAILABLE")
+
+func _stop_host_discovery() -> void:
+	if _host_discovery_socket != null:
+		_host_discovery_socket.close()
+	_host_discovery_socket = null
+
+func _poll_host_discovery() -> void:
+	if not is_host or not connected or _host_discovery_socket == null:
+		return
+	while _host_discovery_socket.get_available_packet_count() > 0:
+		var packet := _host_discovery_socket.get_packet()
+		var sender_ip := _host_discovery_socket.get_packet_ip()
+		var sender_port := _host_discovery_socket.get_packet_port()
+		var parsed: Variant = JSON.parse_string(packet.get_string_from_utf8())
+		if typeof(parsed) != TYPE_DICTIONARY:
+			continue
+		var request := parsed as Dictionary
+		if str(request.get("magic", "")) != DISCOVERY_MAGIC or str(request.get("type", "")) != "discover":
+			continue
+		var response := {
+			"magic": DISCOVERY_MAGIC,
+			"type": "host",
+			"name": display_name,
+			"mode": game_mode,
+			"port": _game_port,
+			"players": players.size(),
+			"max_players": 4 if game_mode == "crisis" else 8,
+			"version": "1.1.0",
+		}
+		_host_discovery_socket.set_dest_address(sender_ip, sender_port)
+		_host_discovery_socket.put_packet(JSON.stringify(response).to_utf8_buffer())
+
+func _send_discovery_probe() -> void:
+	if not _scan_active or _scan_socket == null:
+		return
+	var request := {
+		"magic": DISCOVERY_MAGIC,
+		"type": "discover",
+		"version": "1.1.0",
+	}
+	_scan_socket.set_broadcast_enabled(true)
+	_scan_socket.set_dest_address("255.255.255.255", _discovery_port)
+	_scan_socket.put_packet(JSON.stringify(request).to_utf8_buffer())
+
+func _poll_scan_replies() -> void:
+	if _scan_socket == null:
+		return
+	var changed := false
+	while _scan_socket.get_available_packet_count() > 0:
+		var packet := _scan_socket.get_packet()
+		var sender_ip := _scan_socket.get_packet_ip()
+		var parsed: Variant = JSON.parse_string(packet.get_string_from_utf8())
+		if typeof(parsed) != TYPE_DICTIONARY:
+			continue
+		var response := parsed as Dictionary
+		if str(response.get("magic", "")) != DISCOVERY_MAGIC or str(response.get("type", "")) != "host":
+			continue
+		var port := int(response.get("port", _game_port))
+		var key := "%s:%d" % [sender_ip, port]
+		_discovered_by_key[key] = {
+			"address": sender_ip,
+			"port": port,
+			"name": str(response.get("name", "LAN Host")),
+			"mode": str(response.get("mode", "crisis")),
+			"players": int(response.get("players", 1)),
+			"max_players": int(response.get("max_players", 4)),
+			"last_seen": Time.get_ticks_msec(),
+		}
+		changed = true
+	if changed:
+		_publish_discovered_games()
+
+func _expire_discovered_games() -> void:
+	var now := Time.get_ticks_msec()
+	var expired: Array[String] = []
+	for key in _discovered_by_key:
+		var item: Dictionary = _discovered_by_key[key]
+		if now - int(item.get("last_seen", now)) > DISCOVERY_TIMEOUT_MSEC:
+			expired.append(str(key))
+	if expired.is_empty():
+		return
+	for key in expired:
+		_discovered_by_key.erase(key)
+	_publish_discovered_games()
+
+func _publish_discovered_games() -> void:
+	discovered_games.clear()
+	var keys: Array = _discovered_by_key.keys()
+	keys.sort()
+	for key in keys:
+		discovered_games.append((_discovered_by_key[key] as Dictionary).duplicate(true))
+	lan_games_updated.emit(discovered_games.duplicate(true))
+	if discovered_games.is_empty():
+		status_changed.emit("SCANNING YOUR LOCAL NETWORK...")
+	else:
+		status_changed.emit("%d LAN GAME%s FOUND" % [discovered_games.size(), "" if discovered_games.size() == 1 else "S"])
+
+func _best_local_address() -> String:
+	for address in IP.get_local_addresses():
+		var value := str(address)
+		if ":" in value:
+			continue
+		if value.begins_with("127.") or value.begins_with("169.254."):
+			continue
+		return value
+	return "LAN"
+
 func _clean_name(value: String) -> String:
 	var cleaned := value.strip_edges()
 	if cleaned.is_empty():
@@ -511,107 +491,13 @@ func _clean_name(value: String) -> String:
 		cleaned = cleaned.substr(0, 18)
 	return cleaned
 
-func _normalise_code(value: String) -> String:
-	var code := value.to_upper().strip_edges().replace(" ", "").replace("-", "")
-	if code.length() == 8:
-		return code.substr(0, 4) + "-" + code.substr(4, 4)
-	if code.length() == 9 and code[4] == "-":
-		return code
-	return code
-
-func _create_room() -> Dictionary:
-	if backend_url.is_empty():
-		_fail("Online multiplayer is unavailable.")
-		return {}
-	var body := JSON.stringify({
-		"host_user_id": host_product_user_id,
-		"mode": game_mode,
-		"max_players": 8 if game_mode == "debate" else 4
-	})
-	return await _http_json(
-		backend_url + "/rooms",
-		HTTPClient.METHOD_POST,
-		body,
-		PackedStringArray(["Content-Type: application/json"])
-	)
-
-func _resolve_room(code_value: String) -> Dictionary:
-	if backend_url.is_empty():
-		_fail("Online multiplayer is unavailable.")
-		return {}
-	var encoded := code_value.uri_encode()
-	var result := await _http_json(
-		backend_url + "/rooms/" + encoded,
-		HTTPClient.METHOD_GET,
-		"",
-		[]
-	)
-	if result.is_empty():
-		_fail("Join code not found or expired.")
-	return result
-
-func _delete_room() -> void:
-	if backend_url.is_empty() or join_code.is_empty() or host_token.is_empty():
-		return
-	await _http_json(
-		backend_url + "/rooms/" + join_code.uri_encode(),
-		HTTPClient.METHOD_DELETE,
-		"",
-		PackedStringArray(["Authorization: Bearer " + host_token])
-	)
-
-func _heartbeat_room() -> void:
-	if not is_host or join_code.is_empty() or host_token.is_empty():
-		return
-	await _http_json(
-		backend_url + "/rooms/" + join_code.uri_encode() + "/heartbeat",
-		HTTPClient.METHOD_POST,
-		"",
-		PackedStringArray(["Authorization: Bearer " + host_token])
-	)
-
-func _http_json(url: String, method: HTTPClient.Method, body: String, headers: PackedStringArray) -> Dictionary:
-	var err := _http.request(url, headers, method, body)
-	if err != OK:
-		_fail("Join-code service request could not start.")
-		return {}
-
-	var response: Array = await _http.request_completed
-	var result_code: int = int(response[0])
-	var status_code: int = int(response[1])
-	var data: PackedByteArray = response[3]
-
-	if result_code != HTTPRequest.RESULT_SUCCESS:
-		_fail("Join-code service network error.")
-		return {}
-
-	var parsed: Variant = JSON.parse_string(data.get_string_from_utf8())
-	if status_code < 200 or status_code >= 300:
-		if typeof(parsed) == TYPE_DICTIONARY:
-			var message := str((parsed as Dictionary).get("error", "Join-code service error."))
-			_fail(message)
-		else:
-			_fail("Join-code service returned HTTP %d." % status_code)
-		return {}
-
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return {}
-	return parsed as Dictionary
-
 func _fail(message: String) -> void:
 	status_changed.emit(message)
 	error_occurred.emit(message)
 	connection_state_changed.emit("error")
 
-# --------------------------------------------------------------------
-# Voice interface foundation
-# --------------------------------------------------------------------
-# EOS RTC voice is intentionally kept behind the EOS bridge. The UI can
-# expose PTT/mute state now without pretending audio is already live.
-func set_push_to_talk(active: bool) -> void:
-	if _bridge != null and is_instance_valid(_bridge) and _bridge.has_method("set_push_to_talk"):
-		_bridge.set_push_to_talk(active)
+func set_push_to_talk(_active: bool) -> void:
+	pass
 
-func set_remote_muted(product_user_id: String, muted: bool) -> void:
-	if _bridge != null and is_instance_valid(_bridge) and _bridge.has_method("set_remote_muted"):
-		_bridge.set_remote_muted(product_user_id, muted)
+func set_remote_muted(_product_user_id: String, _muted: bool) -> void:
+	pass

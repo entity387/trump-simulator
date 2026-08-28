@@ -3,10 +3,10 @@ TRUMP SIMULATOR RELEASE UPLOAD
 After running installer\BUILD_OFFICIAL_INSTALLER.bat, upload:
 
 1. release\TrumpSimulatorSetup.exe
-   -> https://trumpsimulator.xyz/downloads/TrumpSimulatorSetup.exe
+   -> https://downloads.simulatedstudios.com/trump-simulator/TrumpSimulatorSetup.exe
 
 2. release\update.json
-   -> https://trumpsimulator.xyz/update.json
+   -> https://simulatedstudios.com/updates/trump-simulator.json
 
 IMPORTANT:
 Upload the installer FIRST, then update.json LAST.
