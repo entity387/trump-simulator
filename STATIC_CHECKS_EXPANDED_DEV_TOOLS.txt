@@ -1,0 +1,12 @@
+PASS - duplicate_functions
+PASS - parentheses_balanced
+PASS - brackets_balanced
+PASS - braces_balanced
+PASS - expanded_dev_tabs
+PASS - f12_toggle
+PASS - session_minimized_launcher
+PASS - save_protection
+PASS - debug_overlay
+PASS - lan_debug
+PASS - intro.tscn_unchanged
+PASS - scripts_studio_intro.gd_unchanged

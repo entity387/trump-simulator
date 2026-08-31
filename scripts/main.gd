@@ -172,6 +172,15 @@ var level_gimmick_accum := 0.0
 # Developer-session state never writes over the player's normal campaign save.
 var dev_sequence_index: int = 0
 var dev_session_active := false
+var dev_access_unlocked := false
+var dev_minimized := false
+var dev_god_mode := false
+var dev_random_events_enabled := true
+var dev_freeze_simulation := false
+var dev_debug_overlay_enabled := false
+var dev_runtime_snapshot: Dictionary = {}
+var dev_last_tool_status := "READY"
+var dev_restore_mouse_capture := false
 
 var rng := RandomNumberGenerator.new()
 
@@ -285,6 +294,18 @@ var dev_code_status: Label
 var dev_panel: Panel
 var dev_map_preview: Panel
 var dev_map_preview_texture: TextureRect
+var dev_minimized_button: Button
+var dev_tabs: TabContainer
+var dev_overview_label: RichTextLabel
+var dev_tool_status_label: Label
+var dev_debug_overlay: Panel
+var dev_debug_overlay_label: Label
+var dev_multiplayer_status_label: Label
+var dev_save_status_label: Label
+var dev_god_button: Button
+var dev_events_button: Button
+var dev_freeze_button: Button
+var dev_overlay_button: Button
 
 var bomb_label: Label
 var power_label: Label
@@ -441,6 +462,8 @@ func _set_startup_step(step_text: String) -> void:
 func _process(delta: float) -> void:
 	_process_menu_background_cycle(delta)
 	_refresh_menu_backdrop()
+	_refresh_dev_runtime_ui()
+	_refresh_dev_launcher_visibility()
 	if not world_ready or not game_started or paused or game_over or level_intro_active:
 		return
 
@@ -448,6 +471,10 @@ func _process(delta: float) -> void:
 	if autosave_accum >= 15.0:
 		autosave_accum = 0.0
 		_save_game()
+
+	if dev_freeze_simulation:
+		_update_ui()
+		return
 
 	var diff: Dictionary = DIFFICULTIES[difficulty_index]
 	var level_data: Dictionary = _current_level_data()
@@ -506,6 +533,13 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key_event: InputEventKey = event as InputEventKey
+		if dev_access_unlocked and key_event.keycode == KEY_F12:
+			if (dev_panel != null and dev_panel.visible) or (dev_map_preview != null and dev_map_preview.visible):
+				_minimize_dev_panel()
+			else:
+				_open_dev_panel()
+			get_viewport().set_input_as_handled()
+			return
 		if _dev_sequence_allowed():
 			var was_last_key: bool = (
 				dev_sequence_index == DEV_SEQUENCE.size() - 1
@@ -547,6 +581,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_toggle_pause()
 
 func _dev_sequence_allowed() -> bool:
+	if dev_access_unlocked:
+		return false
 	if main_menu == null or not main_menu.visible:
 		return false
 	if settings_menu != null and settings_menu.visible:
@@ -593,6 +629,8 @@ func _submit_dev_code(_submitted_text: String = "") -> void:
 	if dev_code_input.text.strip_edges() == DEV_PIN:
 		dev_code_input.text = ""
 		dev_code_panel.visible = false
+		dev_access_unlocked = true
+		dev_minimized = false
 		_open_dev_panel()
 	else:
 		dev_code_input.text = ""
@@ -607,67 +645,108 @@ func _close_dev_code_prompt() -> void:
 	dev_sequence_index = 0
 
 func _open_dev_panel() -> void:
-	if not _home_menu_context():
-		return
+	if not dev_access_unlocked:
+		if not _home_menu_context():
+			return
 	if dev_panel != null:
 		dev_panel.visible = true
+	dev_restore_mouse_capture = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if dev_restore_mouse_capture:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	dev_minimized = false
+	dev_sequence_index = 0
+	_refresh_dev_launcher_visibility()
+	_refresh_dev_runtime_ui()
 	_refresh_menu_backdrop()
 
 func _close_dev_panel() -> void:
+	_minimize_dev_panel()
+
+func _minimize_dev_panel() -> void:
 	if dev_panel != null:
 		dev_panel.visible = false
+	if dev_map_preview != null:
+		dev_map_preview.visible = false
+	dev_minimized = dev_access_unlocked
 	dev_sequence_index = 0
+	if dev_restore_mouse_capture and multiplayer_arena != null and is_instance_valid(multiplayer_arena):
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	dev_restore_mouse_capture = false
+	_refresh_dev_launcher_visibility()
 	_refresh_menu_backdrop()
 
 func _home_menu_context() -> bool:
 	return main_menu != null and main_menu.visible and not game_started
 
 func _open_dev_map_preview() -> void:
-	if not _home_menu_context():
+	if not dev_access_unlocked and not _home_menu_context():
 		return
 	if dev_panel != null:
 		dev_panel.visible = false
 	if dev_map_preview != null:
 		dev_map_preview.visible = true
+	dev_minimized = false
+	_refresh_dev_launcher_visibility()
 
 func _close_dev_map_preview() -> void:
 	if dev_map_preview != null:
 		dev_map_preview.visible = false
-	if _home_menu_context() and dev_panel != null:
+	if dev_access_unlocked and dev_panel != null:
 		dev_panel.visible = true
+	dev_minimized = false
+	_refresh_dev_launcher_visibility()
 
 func _dev_start_stage(target_stage: int) -> void:
-	if not _home_menu_context():
+	if not world_ready:
+		_dev_set_tool_status("WORLD IS STILL LOADING")
 		return
 	var safe_stage: int = clampi(target_stage, 1, STAGES.size())
-	dev_session_active = true
-	if dev_panel != null:
-		dev_panel.visible = false
-	_start_new_game()
+	_dev_mark_modified("STAGE OVERRIDE")
+	if not game_started:
+		_start_new_game()
 	stage = safe_stage
 	last_stage_seen = safe_stage
 	enemy_pressure = 0.0
 	heat = 0.0
 	approval = 75.0
 	chaos = 0.0
+	overheated = false
+	_set_button_hot(false)
 	_reset_runtime_events()
 	_refresh_stage_unlocks()
 	_show_status("STAGE %d — %s" % [safe_stage, str(STAGES[safe_stage - 1]["name"])], 2.0)
 	_update_ui()
+	_minimize_dev_panel()
 
 func _dev_start_level(target_level: int) -> void:
-	if not _home_menu_context():
+	if not world_ready:
+		_dev_set_tool_status("WORLD IS STILL LOADING")
 		return
 	var safe_level: int = clampi(target_level, 0, CAMPAIGN_LEVELS.size() - 1)
-	dev_session_active = true
-	if dev_panel != null:
-		dev_panel.visible = false
-	_start_new_game()
+	_dev_mark_modified("MAP OVERRIDE")
+	if multiplayer_arena != null and is_instance_valid(multiplayer_arena):
+		multiplayer_arena.queue_free()
+		multiplayer_arena = null
+		if multiplayer_hud != null:
+			multiplayer_hud.visible = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if not game_started:
+		_start_new_game()
+	else:
+		paused = false
+		game_over = false
+		get_tree().paused = false
+		if game_over_panel != null:
+			game_over_panel.visible = false
+		_reset_runtime_events()
 	current_level_index = safe_level
 	level_launches = 0
 	campaign_complete = false
+	level_transition_active = false
 	_apply_current_level(true, true)
 	_show_status("MAP %d/%d — %s" % [safe_level + 1, CAMPAIGN_LEVELS.size(), str(_current_level_data()["name"])], 3.0)
+	_update_ui()
+	_minimize_dev_panel()
 
 func _current_level_data() -> Dictionary:
 	return CAMPAIGN_LEVELS[clampi(current_level_index, 0, CAMPAIGN_LEVELS.size() - 1)]
@@ -2464,6 +2543,8 @@ func _start_new_game() -> void:
 	if not world_ready:
 		_set_startup_step("PLEASE WAIT — THE OFFICE IS STILL LOADING")
 		return
+	if dev_access_unlocked and _dev_modifiers_active():
+		dev_session_active = true
 	_stop_menu_background_cycle(true)
 	bombs = 0
 	lifetime_bombs = 0
@@ -2512,6 +2593,8 @@ func _continue_game() -> void:
 		await _fade_from_black()
 		_start_new_game()
 		return
+	if dev_access_unlocked and _dev_modifiers_active():
+		dev_session_active = true
 	if campaign_complete:
 		game_started = false
 		main_menu.visible = true
@@ -2573,6 +2656,8 @@ func _return_to_main_menu() -> void:
 		dev_panel.visible = false
 	if dev_map_preview != null:
 		dev_map_preview.visible = false
+	dev_minimized = dev_access_unlocked
+	_refresh_dev_launcher_visibility()
 	if mirror_overlay != null:
 		mirror_overlay.visible = false
 	if level_intro_root != null:
@@ -2769,6 +2854,7 @@ func _close_credits() -> void:
 	_refresh_menu_backdrop()
 
 func _quit_game() -> void:
+	Engine.time_scale = 1.0
 	get_tree().quit()
 
 # ============================================================
@@ -2864,6 +2950,12 @@ func _load_settings() -> void:
 func _trigger_game_over(reason: String) -> void:
 	if game_over:
 		return
+	if dev_god_mode:
+		approval = maxf(approval, 10.0)
+		chaos = minf(chaos, 90.0)
+		_show_status("DEV GOD MODE PREVENTED GAME OVER", 1.4)
+		_update_ui()
+		return
 
 	game_over = true
 	_close_upgrade_terminal()
@@ -2943,6 +3035,8 @@ func _build_timers() -> void:
 	add_child(alarm_timer)
 
 func _on_event_tick() -> void:
+	if not dev_random_events_enabled:
+		return
 	if not game_started or paused or game_over or level_intro_active or level_transition_active:
 		return
 
@@ -4442,12 +4536,35 @@ func _build_credits_menu() -> void:
 	close.size = Vector2(300, 42)
 	close.pressed.connect(_close_credits)
 
+func _dev_make_header(parent: Control, text_value: String, pos: Vector2, width: float = 500.0) -> Label:
+	var label := Label.new()
+	label.text = text_value
+	label.position = pos
+	label.size = Vector2(width, 28)
+	label.add_theme_font_size_override("font_size", 16)
+	label.modulate = Color("#f2d27c")
+	parent.add_child(label)
+	return label
+
+func _dev_make_note(parent: Control, text_value: String, pos: Vector2, size_value: Vector2) -> Label:
+	var label := Label.new()
+	label.text = text_value
+	label.position = pos
+	label.size = size_value
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 11)
+	label.modulate = Color("#aebdca")
+	parent.add_child(label)
+	return label
+
 func _build_dev_ui() -> void:
-	# Nothing on the normal home menu advertises this panel.
+	# Nothing on the normal home menu advertises this panel. Once unlocked, it stays
+	# available as a small minimized launcher until the app is closed.
 	dev_code_panel = Panel.new()
-	_make_panel_opaque(dev_code_panel, Color(0.04, 0.06, 0.09, 0.84))
+	_make_panel_opaque(dev_code_panel, Color(0.04, 0.06, 0.09, 0.92))
 	dev_code_panel.position = Vector2(435, 235)
 	dev_code_panel.size = Vector2(410, 235)
+	dev_code_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.add_child(dev_code_panel)
 	dev_code_panel.visible = false
 
@@ -4486,65 +4603,335 @@ func _build_dev_ui() -> void:
 	code_cancel.size = Vector2(150, 38)
 	code_cancel.pressed.connect(_close_dev_code_prompt)
 
+	dev_minimized_button = Button.new()
+	dev_minimized_button.text = "DEV TOOLS • F12"
+	dev_minimized_button.position = Vector2(1112, 12)
+	dev_minimized_button.size = Vector2(150, 36)
+	dev_minimized_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	_style_menu_button(dev_minimized_button)
+	dev_minimized_button.add_theme_font_size_override("font_size", 12)
+	dev_minimized_button.pressed.connect(_open_dev_panel)
+	layer.add_child(dev_minimized_button)
+	dev_minimized_button.visible = false
+
+	dev_debug_overlay = Panel.new()
+	_make_panel_opaque(dev_debug_overlay, Color(0.015, 0.025, 0.035, 0.82))
+	dev_debug_overlay.position = Vector2(14, 14)
+	dev_debug_overlay.size = Vector2(390, 286)
+	dev_debug_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	layer.add_child(dev_debug_overlay)
+	dev_debug_overlay.visible = false
+
+	dev_debug_overlay_label = Label.new()
+	dev_debug_overlay_label.position = Vector2(12, 10)
+	dev_debug_overlay_label.size = Vector2(366, 266)
+	dev_debug_overlay_label.add_theme_font_size_override("font_size", 11)
+	dev_debug_overlay_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dev_debug_overlay.add_child(dev_debug_overlay_label)
+
 	dev_panel = Panel.new()
-	_make_panel_opaque(dev_panel, Color(0.04, 0.06, 0.09, 0.84))
-	dev_panel.position = Vector2(240, 70)
-	dev_panel.size = Vector2(800, 650)
+	_make_panel_opaque(dev_panel, Color(0.025, 0.04, 0.06, 0.96))
+	dev_panel.position = Vector2(80, 34)
+	dev_panel.size = Vector2(1120, 650)
+	dev_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.add_child(dev_panel)
 	dev_panel.visible = false
 
 	var dev_title := Label.new()
-	dev_title.text = "DEVELOPER PANEL"
-	dev_title.position = Vector2(0, 24)
-	dev_title.size = Vector2(800, 40)
-	dev_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	dev_title.add_theme_font_size_override("font_size", 30)
+	dev_title.text = "TRUMP SIMULATOR — DEVELOPER TOOLS"
+	dev_title.position = Vector2(24, 16)
+	dev_title.size = Vector2(720, 34)
+	dev_title.add_theme_font_size_override("font_size", 25)
 	dev_panel.add_child(dev_title)
 
-	var preview := _menu_button("VIEW ALL MAP PREVIEWS", Vector2(240, 108), dev_panel)
-	preview.size = Vector2(320, 42)
-	preview.pressed.connect(_open_dev_map_preview)
+	var protected_note := Label.new()
+	protected_note.text = "DEV CHANGES DO NOT OVERWRITE THE NORMAL CAMPAIGN SAVE"
+	protected_note.position = Vector2(24, 48)
+	protected_note.size = Vector2(720, 18)
+	protected_note.add_theme_font_size_override("font_size", 10)
+	protected_note.modulate = Color("#85d9a5")
+	dev_panel.add_child(protected_note)
 
-	var stage_header := Label.new()
-	stage_header.text = "INSTANT MAP LOADER"
-	stage_header.position = Vector2(0, 162)
-	stage_header.size = Vector2(800, 25)
-	stage_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stage_header.add_theme_font_size_override("font_size", 14)
-	dev_panel.add_child(stage_header)
+	var minimize := _menu_button("MINIMIZE", Vector2(916, 18), dev_panel)
+	minimize.size = Vector2(175, 38)
+	minimize.add_theme_font_size_override("font_size", 12)
+	minimize.pressed.connect(_minimize_dev_panel)
 
+	dev_tabs = TabContainer.new()
+	dev_tabs.position = Vector2(24, 76)
+	dev_tabs.size = Vector2(1072, 500)
+	dev_tabs.process_mode = Node.PROCESS_MODE_ALWAYS
+	dev_panel.add_child(dev_tabs)
+
+	# ---------------- STATUS ----------------
+	var status_page := Control.new()
+	status_page.name = "STATUS"
+	dev_tabs.add_child(status_page)
+
+	dev_overview_label = RichTextLabel.new()
+	dev_overview_label.position = Vector2(18, 18)
+	dev_overview_label.size = Vector2(590, 425)
+	dev_overview_label.bbcode_enabled = false
+	dev_overview_label.fit_content = false
+	dev_overview_label.scroll_active = true
+	dev_overview_label.add_theme_font_size_override("normal_font_size", 12)
+	status_page.add_child(dev_overview_label)
+
+	_dev_make_header(status_page, "LIVE DEBUG CONTROLS", Vector2(640, 18), 390)
+	dev_overlay_button = _menu_button("DEBUG OVERLAY — OFF", Vector2(640, 52), status_page)
+	dev_overlay_button.size = Vector2(390, 38)
+	dev_overlay_button.pressed.connect(_dev_toggle_debug_overlay)
+	dev_god_button = _menu_button("GOD MODE — OFF", Vector2(640, 96), status_page)
+	dev_god_button.size = Vector2(390, 38)
+	dev_god_button.pressed.connect(_dev_toggle_god_mode)
+	dev_events_button = _menu_button("RANDOM EVENTS — ON", Vector2(640, 140), status_page)
+	dev_events_button.size = Vector2(390, 38)
+	dev_events_button.pressed.connect(_dev_toggle_random_events)
+	dev_freeze_button = _menu_button("SIMULATION FREEZE — OFF", Vector2(640, 184), status_page)
+	dev_freeze_button.size = Vector2(390, 38)
+	dev_freeze_button.pressed.connect(_dev_toggle_freeze_simulation)
+
+	var normalize := _menu_button("NORMALIZE GAME STATE", Vector2(640, 238), status_page)
+	normalize.size = Vector2(390, 38)
+	normalize.pressed.connect(_dev_normalize_state)
+	var danger := _menu_button("SET NEAR-FAIL STATE", Vector2(640, 282), status_page)
+	danger.size = Vector2(390, 38)
+	danger.pressed.connect(_dev_set_danger_state)
+	var snapshot := _menu_button("CAPTURE RUNTIME SNAPSHOT", Vector2(640, 326), status_page)
+	snapshot.size = Vector2(190, 38)
+	snapshot.add_theme_font_size_override("font_size", 11)
+	snapshot.pressed.connect(_dev_capture_snapshot)
+	var restore_snapshot := _menu_button("RESTORE SNAPSHOT", Vector2(840, 326), status_page)
+	restore_snapshot.size = Vector2(190, 38)
+	restore_snapshot.add_theme_font_size_override("font_size", 11)
+	restore_snapshot.pressed.connect(_dev_restore_snapshot)
+
+	_dev_make_header(status_page, "TIME SCALE", Vector2(640, 378), 390)
+	var half_speed := _menu_button("0.5x", Vector2(640, 410), status_page)
+	half_speed.size = Vector2(120, 36)
+	half_speed.pressed.connect(_dev_set_time_scale.bind(0.5))
+	var normal_speed := _menu_button("1.0x", Vector2(775, 410), status_page)
+	normal_speed.size = Vector2(120, 36)
+	normal_speed.pressed.connect(_dev_set_time_scale.bind(1.0))
+	var double_speed := _menu_button("2.0x", Vector2(910, 410), status_page)
+	double_speed.size = Vector2(120, 36)
+	double_speed.pressed.connect(_dev_set_time_scale.bind(2.0))
+
+	# ---------------- MAPS ----------------
+	var maps_page := Control.new()
+	maps_page.name = "MAPS"
+	dev_tabs.add_child(maps_page)
+	_dev_make_header(maps_page, "INSTANT CAMPAIGN MAP LOADER", Vector2(18, 14), 700)
+	_dev_make_note(maps_page, "Loads directly into a protected developer session. Your normal campaign save is left untouched.", Vector2(18, 42), Vector2(1000, 34))
 	for i in range(CAMPAIGN_LEVELS.size()):
 		var col: int = i % 2
 		var row: int = int(i / 2)
-		var map_button := _menu_button("%d — %s" % [i + 1, str(CAMPAIGN_LEVELS[i]["name"])], Vector2(55 + col * 360, 195 + row * 54), dev_panel)
-		map_button.size = Vector2(335, 40)
-		map_button.add_theme_font_size_override("font_size", 13)
+		var map_button := _menu_button("%d — %s" % [i + 1, str(CAMPAIGN_LEVELS[i]["name"])], Vector2(18 + col * 520, 82 + row * 54), maps_page)
+		map_button.size = Vector2(500, 40)
+		map_button.add_theme_font_size_override("font_size", 12)
 		map_button.pressed.connect(_dev_start_level.bind(i))
+	var reload_map := _menu_button("RELOAD CURRENT MAP", Vector2(18, 365), maps_page)
+	reload_map.size = Vector2(330, 40)
+	reload_map.pressed.connect(_dev_reload_current_map)
+	var preview := _menu_button("VIEW ALL MAP PREVIEWS", Vector2(370, 365), maps_page)
+	preview.size = Vector2(330, 40)
+	preview.pressed.connect(_open_dev_map_preview)
+	var next_backdrop := _menu_button("NEXT MENU BACKDROP", Vector2(722, 365), maps_page)
+	next_backdrop.size = Vector2(310, 40)
+	next_backdrop.pressed.connect(_dev_next_menu_backdrop)
 
-	var mp_header := Label.new()
-	mp_header.text = "MULTIPLAYER MAPS"
-	mp_header.position = Vector2(0, 470)
-	mp_header.size = Vector2(800, 24)
-	mp_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mp_header.add_theme_font_size_override("font_size", 13)
-	dev_panel.add_child(mp_header)
+	# ---------------- GAME STATE ----------------
+	var game_page := Control.new()
+	game_page.name = "GAME STATE"
+	dev_tabs.add_child(game_page)
+	_dev_make_header(game_page, "STAGE OVERRIDE", Vector2(18, 14), 330)
+	for i in range(STAGES.size()):
+		var stage_button := _menu_button("%d • %s" % [i + 1, str(STAGES[i]["name"])], Vector2(18, 50 + i * 48), game_page)
+		stage_button.size = Vector2(320, 36)
+		stage_button.add_theme_font_size_override("font_size", 11)
+		stage_button.pressed.connect(_dev_start_stage.bind(i + 1))
 
-	var crisis_mp := _menu_button("CRISIS ROOM", Vector2(55, 498), dev_panel)
-	crisis_mp.size = Vector2(335, 38)
+	_dev_make_header(game_page, "RUNTIME VALUES", Vector2(370, 14), 300)
+	var add_10k := _menu_button("+10,000 BOMBS", Vector2(370, 50), game_page)
+	add_10k.size = Vector2(280, 36)
+	add_10k.pressed.connect(_dev_add_bombs.bind(10000))
+	var add_1m := _menu_button("+1,000,000 BOMBS", Vector2(370, 94), game_page)
+	add_1m.size = Vector2(280, 36)
+	add_1m.pressed.connect(_dev_add_bombs.bind(1000000))
+	var zero_bombs := _menu_button("SET BOMBS TO 0", Vector2(370, 138), game_page)
+	zero_bombs.size = Vector2(280, 36)
+	zero_bombs.pressed.connect(_dev_set_bombs.bind(0))
+	var goal_90 := _menu_button("LEVEL PROGRESS → 90%", Vector2(370, 190), game_page)
+	goal_90.size = Vector2(280, 36)
+	goal_90.pressed.connect(_dev_set_level_progress.bind(0.90))
+	var goal_99 := _menu_button("LEVEL PROGRESS → 99%", Vector2(370, 234), game_page)
+	goal_99.size = Vector2(280, 36)
+	goal_99.pressed.connect(_dev_set_level_progress.bind(0.99))
+	var complete := _menu_button("COMPLETE CURRENT LEVEL", Vector2(370, 278), game_page)
+	complete.size = Vector2(280, 36)
+	complete.pressed.connect(_dev_complete_current_level)
+	var reset_progress := _menu_button("RESET LEVEL PROGRESS", Vector2(370, 322), game_page)
+	reset_progress.size = Vector2(280, 36)
+	reset_progress.pressed.connect(_dev_set_level_progress.bind(0.0))
+
+	_dev_make_header(game_page, "UPGRADES / DIFFICULTY", Vector2(682, 14), 350)
+	var all_upgrades := _menu_button("UNLOCK ALL UPGRADES", Vector2(682, 50), game_page)
+	all_upgrades.size = Vector2(350, 36)
+	all_upgrades.pressed.connect(_dev_unlock_all_upgrades)
+	var clear_upgrades := _menu_button("CLEAR ALL UPGRADES", Vector2(682, 94), game_page)
+	clear_upgrades.size = Vector2(350, 36)
+	clear_upgrades.pressed.connect(_dev_clear_upgrades)
+	_dev_make_note(game_page, "Difficulty can be changed live for balance testing.", Vector2(682, 142), Vector2(350, 34))
+	for i in range(DIFFICULTIES.size()):
+		var dcol: int = i % 2
+		var drow: int = int(i / 2)
+		var diff_button := _menu_button(str(DIFFICULTIES[i]["name"]).to_upper(), Vector2(682 + dcol * 180, 184 + drow * 48), game_page)
+		diff_button.size = Vector2(170, 36)
+		diff_button.add_theme_font_size_override("font_size", 9)
+		diff_button.pressed.connect(_dev_set_difficulty.bind(i))
+
+	# ---------------- EVENTS ----------------
+	var events_page := Control.new()
+	events_page.name = "EVENTS"
+	dev_tabs.add_child(events_page)
+	_dev_make_header(events_page, "PHONE CALLS", Vector2(18, 14), 480)
+	var random_call := _menu_button("RANDOM CALL", Vector2(18, 50), events_page)
+	random_call.size = Vector2(240, 38)
+	random_call.pressed.connect(_dev_force_call.bind(""))
+	var kim_call := _menu_button("KIM", Vector2(274, 50), events_page)
+	kim_call.size = Vector2(115, 38)
+	kim_call.pressed.connect(_dev_force_call.bind("KIM"))
+	var putin_call := _menu_button("PUTIN", Vector2(399, 50), events_page)
+	putin_call.size = Vector2(115, 38)
+	putin_call.pressed.connect(_dev_force_call.bind("PUTIN"))
+	var xi_call := _menu_button("XI", Vector2(524, 50), events_page)
+	xi_call.size = Vector2(115, 38)
+	xi_call.pressed.connect(_dev_force_call.bind("XI"))
+	var timmy_call := _menu_button("TIMMY", Vector2(649, 50), events_page)
+	timmy_call.size = Vector2(115, 38)
+	timmy_call.pressed.connect(_dev_force_call.bind("LIL TIMMY"))
+	var answer_call := _menu_button("ANSWER ACTIVE CALL", Vector2(18, 98), events_page)
+	answer_call.size = Vector2(240, 38)
+	answer_call.pressed.connect(_dev_answer_active_call)
+	var end_call := _menu_button("END ACTIVE CALL", Vector2(274, 98), events_page)
+	end_call.size = Vector2(240, 38)
+	end_call.pressed.connect(_dev_end_active_call)
+
+	_dev_make_header(events_page, "GAMEPLAY EVENTS", Vector2(18, 158), 480)
+	var paperwork := _menu_button("TRIGGER PAPERWORK", Vector2(18, 194), events_page)
+	paperwork.size = Vector2(240, 38)
+	paperwork.pressed.connect(_dev_trigger_paperwork)
+	var crisis := _menu_button("TRIGGER CRISIS", Vector2(274, 194), events_page)
+	crisis.size = Vector2(240, 38)
+	crisis.pressed.connect(_dev_trigger_crisis)
+	var alarm := _menu_button("TRIGGER ALARM", Vector2(530, 194), events_page)
+	alarm.size = Vector2(240, 38)
+	alarm.pressed.connect(_dev_trigger_alarm)
+	var gimmick := _menu_button("TRIGGER MAP GIMMICK", Vector2(18, 242), events_page)
+	gimmick.size = Vector2(240, 38)
+	gimmick.pressed.connect(_dev_trigger_gimmick)
+	var overheat := _menu_button("FORCE OVERHEAT", Vector2(274, 242), events_page)
+	overheat.size = Vector2(240, 38)
+	overheat.pressed.connect(_dev_force_overheat)
+	var clear_events := _menu_button("CLEAR ALL EVENTS", Vector2(530, 242), events_page)
+	clear_events.size = Vector2(240, 38)
+	clear_events.pressed.connect(_dev_clear_events)
+
+	_dev_make_header(events_page, "FAILURE TESTS", Vector2(18, 310), 480)
+	var test_game_over := _menu_button("TRIGGER GAME-OVER UI", Vector2(18, 346), events_page)
+	test_game_over.size = Vector2(300, 38)
+	test_game_over.pressed.connect(_dev_trigger_game_over_test)
+	var clear_game_over := _menu_button("RECOVER FROM GAME OVER", Vector2(336, 346), events_page)
+	clear_game_over.size = Vector2(300, 38)
+	clear_game_over.pressed.connect(_dev_recover_game_over)
+	_dev_make_note(events_page, "Event triggers automatically raise the stage if that system would otherwise be locked.", Vector2(18, 402), Vector2(900, 34))
+
+	# ---------------- SAVE / DEBUG ----------------
+	var debug_page := Control.new()
+	debug_page.name = "SAVE / DEBUG"
+	dev_tabs.add_child(debug_page)
+	_dev_make_header(debug_page, "NORMAL SAVE PROTECTION", Vector2(18, 14), 490)
+	dev_save_status_label = Label.new()
+	dev_save_status_label.position = Vector2(18, 48)
+	dev_save_status_label.size = Vector2(500, 118)
+	dev_save_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dev_save_status_label.add_theme_font_size_override("font_size", 11)
+	debug_page.add_child(dev_save_status_label)
+	var backup_save := _menu_button("BACK UP SAVE + SETTINGS", Vector2(18, 178), debug_page)
+	backup_save.size = Vector2(300, 38)
+	backup_save.pressed.connect(_dev_backup_normal_files)
+	var restore_save := _menu_button("RESTORE DEV BACKUP", Vector2(334, 178), debug_page)
+	restore_save.size = Vector2(300, 38)
+	restore_save.pressed.connect(_dev_restore_normal_files)
+	var validate_save := _menu_button("VALIDATE SAVE JSON", Vector2(18, 226), debug_page)
+	validate_save.size = Vector2(300, 38)
+	validate_save.pressed.connect(_dev_validate_save)
+	var reload_save := _menu_button("RELOAD NORMAL SAVE", Vector2(334, 226), debug_page)
+	reload_save.size = Vector2(300, 38)
+	reload_save.pressed.connect(_dev_reload_normal_save)
+
+	_dev_make_header(debug_page, "DEBUG REPORTING", Vector2(680, 14), 350)
+	var copy_report := _menu_button("COPY DEBUG REPORT", Vector2(680, 50), debug_page)
+	copy_report.size = Vector2(350, 38)
+	copy_report.pressed.connect(_dev_copy_debug_report)
+	var dump_report := _menu_button("WRITE REPORT TO USER FOLDER", Vector2(680, 98), debug_page)
+	dump_report.size = Vector2(350, 38)
+	dump_report.add_theme_font_size_override("font_size", 11)
+	dump_report.pressed.connect(_dev_dump_debug_report)
+	var print_tree_button := _menu_button("PRINT SCENE TREE", Vector2(680, 146), debug_page)
+	print_tree_button.size = Vector2(350, 38)
+	print_tree_button.pressed.connect(_dev_print_scene_tree)
+	var open_user := _menu_button("OPEN USER DATA FOLDER", Vector2(680, 194), debug_page)
+	open_user.size = Vector2(350, 38)
+	open_user.pressed.connect(_dev_open_user_data_folder)
+	var refresh_ui := _menu_button("FORCE UI REFRESH", Vector2(680, 242), debug_page)
+	refresh_ui.size = Vector2(350, 38)
+	refresh_ui.pressed.connect(_dev_force_ui_refresh)
+	_dev_make_note(debug_page, "Debug report includes FPS, level/stage, runtime meters, active events, save protection and LAN state.", Vector2(680, 300), Vector2(350, 70))
+
+	# ---------------- MULTIPLAYER ----------------
+	var multiplayer_page := Control.new()
+	multiplayer_page.name = "MULTIPLAYER"
+	dev_tabs.add_child(multiplayer_page)
+	_dev_make_header(multiplayer_page, "LAN DIAGNOSTICS", Vector2(18, 14), 520)
+	dev_multiplayer_status_label = Label.new()
+	dev_multiplayer_status_label.position = Vector2(18, 48)
+	dev_multiplayer_status_label.size = Vector2(610, 160)
+	dev_multiplayer_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dev_multiplayer_status_label.add_theme_font_size_override("font_size", 12)
+	multiplayer_page.add_child(dev_multiplayer_status_label)
+	var scan_lan := _menu_button("REFRESH LAN SCAN", Vector2(18, 222), multiplayer_page)
+	scan_lan.size = Vector2(290, 38)
+	scan_lan.pressed.connect(_dev_refresh_lan_scan)
+	var leave_lan := _menu_button("LEAVE LAN SESSION", Vector2(324, 222), multiplayer_page)
+	leave_lan.size = Vector2(290, 38)
+	leave_lan.pressed.connect(_dev_leave_lan_session)
+	var open_lan := _menu_button("OPEN LAN BROWSER", Vector2(18, 270), multiplayer_page)
+	open_lan.size = Vector2(596, 38)
+	open_lan.pressed.connect(_dev_open_lan_browser)
+
+	_dev_make_header(multiplayer_page, "LOCAL PRACTICE MAPS", Vector2(660, 14), 360)
+	var crisis_mp := _menu_button("CRISIS ROOM — INTEL", Vector2(660, 50), multiplayer_page)
+	crisis_mp.size = Vector2(370, 38)
 	crisis_mp.pressed.connect(_dev_start_multiplayer.bind("crisis", "INTEL"))
-
-	var debate_mp := _menu_button("DEBATE", Vector2(410, 498), dev_panel)
-	debate_mp.size = Vector2(335, 38)
+	var debate_mp := _menu_button("DEBATE — TRUMP", Vector2(660, 98), multiplayer_page)
+	debate_mp.size = Vector2(370, 38)
 	debate_mp.pressed.connect(_dev_start_multiplayer.bind("debate", "TRUMP"))
+	_dev_make_note(multiplayer_page, "Local Practice tools are available from the home menu. LAN diagnostics remain visible while testing a session.", Vector2(660, 158), Vector2(370, 76))
 
-	var dev_close := _menu_button("CLOSE DEV PANEL", Vector2(240, 555), dev_panel)
-	dev_close.size = Vector2(320, 42)
-	dev_close.pressed.connect(_close_dev_panel)
+	dev_tool_status_label = Label.new()
+	dev_tool_status_label.position = Vector2(24, 598)
+	dev_tool_status_label.size = Vector2(1072, 28)
+	dev_tool_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dev_tool_status_label.add_theme_font_size_override("font_size", 11)
+	dev_tool_status_label.modulate = Color("#9fc6d9")
+	dev_panel.add_child(dev_tool_status_label)
 
 	dev_map_preview = Panel.new()
-	_make_panel_opaque(dev_map_preview, Color(0.03, 0.05, 0.08, 0.86))
+	_make_panel_opaque(dev_map_preview, Color(0.02, 0.035, 0.05, 0.98))
 	dev_map_preview.position = Vector2(55, 35)
 	dev_map_preview.size = Vector2(1170, 650)
+	dev_map_preview.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.add_child(dev_map_preview)
 	dev_map_preview.visible = false
 
@@ -4564,15 +4951,542 @@ func _build_dev_ui() -> void:
 	dev_map_preview_texture.texture = load("res://assets/dev/all_maps_overview.png") as Texture2D
 	dev_map_preview.add_child(dev_map_preview_texture)
 
-	var preview_close := _menu_button("BACK TO DEV PANEL", Vector2(425, 598), dev_map_preview)
+	var preview_close := _menu_button("BACK TO DEV TOOLS", Vector2(425, 598), dev_map_preview)
 	preview_close.size = Vector2(320, 38)
 	preview_close.pressed.connect(_close_dev_map_preview)
 
+	_refresh_dev_launcher_visibility()
+	_refresh_dev_runtime_ui()
+
+func _refresh_dev_launcher_visibility() -> void:
+	if dev_minimized_button == null:
+		return
+	var full_panel_open := dev_panel != null and dev_panel.visible
+	var preview_open := dev_map_preview != null and dev_map_preview.visible
+	var code_open := dev_code_panel != null and dev_code_panel.visible
+	dev_minimized_button.visible = dev_access_unlocked and not full_panel_open and not preview_open and not code_open
+
+func _dev_set_tool_status(message: String) -> void:
+	dev_last_tool_status = message
+	if dev_tool_status_label != null:
+		dev_tool_status_label.text = "STATUS • " + message
+
+func _dev_mark_modified(reason: String) -> void:
+	dev_session_active = true
+	_dev_set_tool_status("%s — NORMAL SAVE PROTECTED" % reason)
+
+func _dev_require_game(required_stage: int = 1) -> bool:
+	if not game_started or game_over:
+		_dev_set_tool_status("START A CAMPAIGN MAP BEFORE USING THIS TOOL")
+		return false
+	_dev_mark_modified("RUNTIME MODIFIED")
+	if stage < required_stage:
+		stage = required_stage
+		last_stage_seen = stage
+		_refresh_stage_unlocks()
+	return true
+
+func _dev_modifiers_active() -> bool:
+	return dev_god_mode or not dev_random_events_enabled or dev_freeze_simulation or absf(Engine.time_scale - 1.0) > 0.001
+
+func _dev_event_summary() -> String:
+	var parts: Array[String] = []
+	if call_active:
+		parts.append("CALL:%s" % active_caller)
+	if paperwork_active:
+		parts.append("PAPERWORK")
+	if crisis_active:
+		parts.append("CRISIS")
+	if alarm_active:
+		parts.append("ALARM")
+	if overheated:
+		parts.append("OVERHEAT")
+	return "NONE" if parts.is_empty() else ", ".join(parts)
+
+func _dev_debug_report() -> String:
+	var fps: int = Engine.get_frames_per_second()
+	var frame_ms: float = 0.0 if fps <= 0 else 1000.0 / float(fps)
+	var level_name := str(_current_level_data().get("name", "N/A")) if not CAMPAIGN_LEVELS.is_empty() else "N/A"
+	var lan_text := "OFFLINE"
+	if OnlineMultiplayer.connected or OnlineMultiplayer.is_host:
+		lan_text = "%s • %s • %d PLAYER(S)" % ["HOST" if OnlineMultiplayer.is_host else "CLIENT", str(OnlineMultiplayer.game_mode), OnlineMultiplayer.players.size()]
+	return (
+		"BUILD: v%s\n" % VERSION
+		+ "FPS: %d  |  FRAME: %.2f ms  |  TIME SCALE: %.2fx\n" % [fps, frame_ms, Engine.time_scale]
+		+ "WORLD: %s  |  GAME: %s  |  PAUSED: %s  |  GAME OVER: %s\n" % [world_load_step, str(game_started), str(paused), str(game_over)]
+		+ "LEVEL: %d/%d — %s\n" % [current_level_index + 1, CAMPAIGN_LEVELS.size(), level_name]
+		+ "STAGE: %d/%d — %s  |  DIFFICULTY: %s\n" % [stage, STAGES.size(), str(STAGES[clampi(stage - 1, 0, STAGES.size() - 1)]["name"]), str(DIFFICULTIES[difficulty_index]["name"])]
+		+ "BOMBS: %d  |  POWER: %d  |  LEVEL LAUNCHES: %d\n" % [bombs, power, level_launches]
+		+ "PRESSURE: %.1f  |  HEAT: %.1f  |  APPROVAL: %.1f  |  CHAOS: %.1f\n" % [enemy_pressure, heat, approval, chaos]
+		+ "EVENTS: %s\n" % _dev_event_summary()
+		+ "DEV SAVE PROTECTION: %s  |  GOD: %s  |  RANDOM EVENTS: %s  |  FREEZE: %s\n" % ["ACTIVE" if dev_session_active else "STANDBY", "ON" if dev_god_mode else "OFF", "ON" if dev_random_events_enabled else "OFF", "ON" if dev_freeze_simulation else "OFF"]
+		+ "LAN: %s  |  DISCOVERED: %d\n" % [lan_text, OnlineMultiplayer.discovered_games.size()]
+		+ "SAVE: %s\n" % ("PRESENT" if FileAccess.file_exists(SAVE_PATH) else "MISSING")
+	)
+
+func _refresh_dev_runtime_ui() -> void:
+	if not dev_access_unlocked and not (dev_code_panel != null and dev_code_panel.visible):
+		if dev_debug_overlay != null:
+			dev_debug_overlay.visible = false
+		return
+	if dev_overview_label != null:
+		dev_overview_label.text = _dev_debug_report()
+	if dev_tool_status_label != null:
+		dev_tool_status_label.text = "STATUS • " + dev_last_tool_status
+	if dev_god_button != null:
+		dev_god_button.text = "GOD MODE — " + ("ON" if dev_god_mode else "OFF")
+	if dev_events_button != null:
+		dev_events_button.text = "RANDOM EVENTS — " + ("ON" if dev_random_events_enabled else "OFF")
+	if dev_freeze_button != null:
+		dev_freeze_button.text = "SIMULATION FREEZE — " + ("ON" if dev_freeze_simulation else "OFF")
+	if dev_overlay_button != null:
+		dev_overlay_button.text = "DEBUG OVERLAY — " + ("ON" if dev_debug_overlay_enabled else "OFF")
+	if dev_debug_overlay != null:
+		var full_panel_open := dev_panel != null and dev_panel.visible
+		var preview_open := dev_map_preview != null and dev_map_preview.visible
+		dev_debug_overlay.visible = dev_access_unlocked and dev_debug_overlay_enabled and not full_panel_open and not preview_open
+	if dev_debug_overlay_label != null:
+		dev_debug_overlay_label.text = _dev_debug_report()
+	if dev_save_status_label != null:
+		var backup_exists := FileAccess.file_exists("user://savegame_dev_backup.json")
+		dev_save_status_label.text = (
+			"Normal save: %s\n" % ("PRESENT" if FileAccess.file_exists(SAVE_PATH) else "MISSING")
+			+ "Settings: %s\n" % ("PRESENT" if FileAccess.file_exists(SETTINGS_PATH) else "MISSING")
+			+ "Dev backup: %s\n" % ("PRESENT" if backup_exists else "MISSING")
+			+ "Current runtime writes: %s\n" % ("BLOCKED / PROTECTED" if dev_session_active else "NORMAL")
+			+ ProjectSettings.globalize_path("user://")
+		)
+	if dev_multiplayer_status_label != null:
+		dev_multiplayer_status_label.text = (
+			"Connected: %s\n" % str(OnlineMultiplayer.connected)
+			+ "Host: %s\n" % str(OnlineMultiplayer.is_host)
+			+ "Mode: %s\n" % (str(OnlineMultiplayer.game_mode) if str(OnlineMultiplayer.game_mode) != "" else "NONE")
+			+ "Local role: %s\n" % (str(OnlineMultiplayer.local_role) if str(OnlineMultiplayer.local_role) != "" else "NONE")
+			+ "Players: %d\n" % OnlineMultiplayer.players.size()
+			+ "Discovered LAN games: %d\n" % OnlineMultiplayer.discovered_games.size()
+			+ "Game port: %d  •  Discovery port: %d" % [int(ProjectSettings.get_setting("trump_simulator/multiplayer/lan_port", 27887)), int(ProjectSettings.get_setting("trump_simulator/multiplayer/discovery_port", 27888))]
+		)
+
+func _dev_toggle_debug_overlay() -> void:
+	dev_debug_overlay_enabled = not dev_debug_overlay_enabled
+	_dev_set_tool_status("DEBUG OVERLAY %s" % ("ENABLED" if dev_debug_overlay_enabled else "DISABLED"))
+	_refresh_dev_runtime_ui()
+
+func _dev_toggle_god_mode() -> void:
+	dev_god_mode = not dev_god_mode
+	if game_started:
+		_dev_mark_modified("GOD MODE %s" % ("ENABLED" if dev_god_mode else "DISABLED"))
+	else:
+		_dev_set_tool_status("GOD MODE %s" % ("ENABLED" if dev_god_mode else "DISABLED"))
+	_refresh_dev_runtime_ui()
+
+func _dev_toggle_random_events() -> void:
+	dev_random_events_enabled = not dev_random_events_enabled
+	if game_started:
+		_dev_mark_modified("RANDOM EVENTS %s" % ("ENABLED" if dev_random_events_enabled else "DISABLED"))
+	else:
+		_dev_set_tool_status("RANDOM EVENTS %s" % ("ENABLED" if dev_random_events_enabled else "DISABLED"))
+	_refresh_dev_runtime_ui()
+
+func _dev_toggle_freeze_simulation() -> void:
+	dev_freeze_simulation = not dev_freeze_simulation
+	if game_started:
+		_dev_mark_modified("SIMULATION FREEZE %s" % ("ENABLED" if dev_freeze_simulation else "DISABLED"))
+	else:
+		_dev_set_tool_status("SIMULATION FREEZE %s" % ("ENABLED" if dev_freeze_simulation else "DISABLED"))
+	_refresh_dev_runtime_ui()
+
+func _dev_set_time_scale(value: float) -> void:
+	Engine.time_scale = clampf(value, 0.1, 4.0)
+	_dev_set_tool_status("TIME SCALE SET TO %.2fx" % Engine.time_scale)
+
+func _dev_normalize_state() -> void:
+	if not _dev_require_game(1):
+		return
+	enemy_pressure = 0.0
+	heat = 0.0
+	approval = 75.0
+	chaos = 0.0
+	overheated = false
+	_set_button_hot(false)
+	_reset_runtime_events()
+	_update_ui()
+	_dev_set_tool_status("RUNTIME METERS AND EVENTS NORMALIZED")
+
+func _dev_set_danger_state() -> void:
+	if not _dev_require_game(6):
+		return
+	enemy_pressure = 94.0
+	heat = 92.0
+	approval = 8.0
+	chaos = 94.0
+	_update_ui()
+	_dev_set_tool_status("NEAR-FAIL STATE APPLIED")
+
+func _dev_capture_snapshot() -> void:
+	if not game_started:
+		_dev_set_tool_status("START A MAP BEFORE CAPTURING A SNAPSHOT")
+		return
+	dev_runtime_snapshot = {
+		"bombs": bombs,
+		"lifetime_bombs": lifetime_bombs,
+		"power": power,
+		"stage": stage,
+		"difficulty_index": difficulty_index,
+		"current_level_index": current_level_index,
+		"level_launches": level_launches,
+		"campaign_complete": campaign_complete,
+		"enemy_pressure": enemy_pressure,
+		"heat": heat,
+		"approval": approval,
+		"chaos": chaos,
+		"purchased_upgrades": purchased_upgrades.duplicate(),
+	}
+	_dev_set_tool_status("RUNTIME SNAPSHOT CAPTURED")
+
+func _dev_restore_snapshot() -> void:
+	if dev_runtime_snapshot.is_empty():
+		_dev_set_tool_status("NO RUNTIME SNAPSHOT HAS BEEN CAPTURED")
+		return
+	if not game_started:
+		_dev_set_tool_status("START A MAP BEFORE RESTORING THE SNAPSHOT")
+		return
+	_dev_mark_modified("SNAPSHOT RESTORE")
+	bombs = int(dev_runtime_snapshot.get("bombs", bombs))
+	lifetime_bombs = int(dev_runtime_snapshot.get("lifetime_bombs", lifetime_bombs))
+	power = int(dev_runtime_snapshot.get("power", power))
+	stage = clampi(int(dev_runtime_snapshot.get("stage", stage)), 1, STAGES.size())
+	difficulty_index = clampi(int(dev_runtime_snapshot.get("difficulty_index", difficulty_index)), 0, DIFFICULTIES.size() - 1)
+	current_level_index = clampi(int(dev_runtime_snapshot.get("current_level_index", current_level_index)), 0, CAMPAIGN_LEVELS.size() - 1)
+	level_launches = maxi(0, int(dev_runtime_snapshot.get("level_launches", level_launches)))
+	campaign_complete = bool(dev_runtime_snapshot.get("campaign_complete", campaign_complete))
+	enemy_pressure = float(dev_runtime_snapshot.get("enemy_pressure", enemy_pressure))
+	heat = float(dev_runtime_snapshot.get("heat", heat))
+	approval = float(dev_runtime_snapshot.get("approval", approval))
+	chaos = float(dev_runtime_snapshot.get("chaos", chaos))
+	purchased_upgrades.clear()
+	for item in dev_runtime_snapshot.get("purchased_upgrades", []):
+		purchased_upgrades.append(str(item))
+	_reset_runtime_events()
+	_apply_current_level(false, false)
+	_refresh_stage_unlocks()
+	_update_ui()
+	_dev_set_tool_status("RUNTIME SNAPSHOT RESTORED")
+
+func _dev_reload_current_map() -> void:
+	if not game_started:
+		_dev_set_tool_status("START A MAP FIRST")
+		return
+	_dev_mark_modified("MAP RELOAD")
+	_reset_runtime_events()
+	_apply_current_level(true, false)
+	_update_ui()
+	_dev_set_tool_status("CURRENT MAP RELOADED")
+
+func _dev_next_menu_backdrop() -> void:
+	if not _home_menu_context():
+		_dev_set_tool_status("MENU BACKDROPS CAN ONLY BE CYCLED FROM THE HOME MENU")
+		return
+	if menu_background_entries.size() < 2:
+		_start_menu_background_cycle(_saved_menu_level_index())
+	if menu_background_entries.size() < 2:
+		_dev_set_tool_status("NO MENU BACKDROPS AVAILABLE")
+		return
+	menu_background_index = (menu_background_index + 1) % menu_background_entries.size()
+	menu_background_elapsed = 0.0
+	_apply_menu_background_entry(menu_background_entries[menu_background_index])
+	_dev_set_tool_status("MENU BACKDROP ADVANCED")
+
+func _dev_add_bombs(amount: int) -> void:
+	if not _dev_require_game(1):
+		return
+	bombs = maxi(0, bombs + amount)
+	lifetime_bombs = maxi(lifetime_bombs, bombs)
+	_update_ui()
+	_dev_set_tool_status("BOMBS CHANGED BY %+d" % amount)
+
+func _dev_set_bombs(value: int) -> void:
+	if not _dev_require_game(1):
+		return
+	bombs = maxi(0, value)
+	_update_ui()
+	_dev_set_tool_status("BOMBS SET TO %d" % bombs)
+
+func _dev_set_level_progress(ratio: float) -> void:
+	if not _dev_require_game(1):
+		return
+	var goal := maxi(1, int(_current_level_data().get("goal", 1)))
+	level_launches = clampi(int(round(float(goal) * clampf(ratio, 0.0, 0.999))), 0, goal - 1)
+	_recalculate_campaign_stage(false)
+	_refresh_stage_unlocks()
+	_update_ui()
+	_dev_set_tool_status("LEVEL PROGRESS SET TO %d%%" % int(round(ratio * 100.0)))
+
+func _dev_complete_current_level() -> void:
+	if not _dev_require_game(1):
+		return
+	var goal := maxi(1, int(_current_level_data().get("goal", 1)))
+	level_launches = goal
+	_update_ui()
+	_complete_current_level()
+	_dev_set_tool_status("CURRENT LEVEL COMPLETION TRIGGERED")
+
+func _dev_unlock_all_upgrades() -> void:
+	if not _dev_require_game(1):
+		return
+	purchased_upgrades.clear()
+	power = 1
+	for upgrade in UPGRADES:
+		purchased_upgrades.append(str(upgrade["id"]))
+		power += int(upgrade["power"])
+	_update_ui()
+	_dev_set_tool_status("ALL UPGRADES UNLOCKED")
+
+func _dev_clear_upgrades() -> void:
+	if not _dev_require_game(1):
+		return
+	purchased_upgrades.clear()
+	power = 1
+	_update_ui()
+	_dev_set_tool_status("ALL UPGRADES CLEARED")
+
+func _dev_set_difficulty(index: int) -> void:
+	if index < 0 or index >= DIFFICULTIES.size():
+		return
+	if game_started:
+		_dev_mark_modified("DIFFICULTY OVERRIDE")
+	difficulty_index = index
+	_update_ui()
+	_dev_set_tool_status("DIFFICULTY SET TO %s" % str(DIFFICULTIES[index]["name"]))
+
+func _dev_force_call(caller: String) -> void:
+	if not _dev_require_game(3):
+		return
+	_reset_runtime_events()
+	_start_call()
+	if not call_active:
+		_dev_set_tool_status("CALL COULD NOT BE STARTED")
+		return
+	if caller != "":
+		active_caller = caller
+		caller_label.text = "INCOMING CALL: " + active_caller
+	_update_ui()
+	_dev_set_tool_status("CALL TRIGGERED — %s" % active_caller)
+
+func _dev_answer_active_call() -> void:
+	if not call_active:
+		_dev_set_tool_status("NO ACTIVE CALL TO ANSWER")
+		return
+	_dev_mark_modified("CALL TEST")
+	_answer_phone()
+	_dev_set_tool_status("ACTIVE CALL ANSWERED")
+
+func _dev_end_active_call() -> void:
+	if not call_active:
+		_dev_set_tool_status("NO ACTIVE CALL TO END")
+		return
+	_dev_mark_modified("CALL TEST")
+	if call_answered:
+		_finish_answered_call()
+	else:
+		_reset_runtime_events()
+	_update_ui()
+	_dev_set_tool_status("ACTIVE CALL ENDED")
+
+func _dev_trigger_paperwork() -> void:
+	if not _dev_require_game(4):
+		return
+	paperwork_active = false
+	if paper_timer != null:
+		paper_timer.stop()
+	_start_paperwork()
+	_dev_set_tool_status("PAPERWORK TRIGGERED")
+
+func _dev_trigger_crisis() -> void:
+	if not _dev_require_game(5):
+		return
+	crisis_active = false
+	if crisis_timer != null:
+		crisis_timer.stop()
+	_start_crisis()
+	_dev_set_tool_status("CRISIS TRIGGERED")
+
+func _dev_trigger_alarm() -> void:
+	if not _dev_require_game(6):
+		return
+	alarm_active = false
+	if alarm_timer != null:
+		alarm_timer.stop()
+	_start_alarm()
+	_dev_set_tool_status("ALARM TRIGGERED")
+
+func _dev_trigger_gimmick() -> void:
+	if not _dev_require_game(1):
+		return
+	_trigger_level_gimmick()
+	_dev_set_tool_status("CURRENT MAP GIMMICK TRIGGERED")
+
+func _dev_force_overheat() -> void:
+	if not _dev_require_game(4):
+		return
+	overheated = false
+	_start_overheat()
+	_update_ui()
+	_dev_set_tool_status("BUTTON OVERHEAT TRIGGERED")
+
+func _dev_clear_events() -> void:
+	if not game_started:
+		_dev_set_tool_status("NO ACTIVE GAMEPLAY SESSION")
+		return
+	_dev_mark_modified("EVENT RESET")
+	_reset_runtime_events()
+	overheated = false
+	heat = minf(heat, 48.0)
+	_set_button_hot(false)
+	_update_ui()
+	_dev_set_tool_status("ALL ACTIVE EVENTS CLEARED")
+
+func _dev_trigger_game_over_test() -> void:
+	if not _dev_require_game(1):
+		return
+	var previous_god := dev_god_mode
+	dev_god_mode = false
+	_trigger_game_over("DEVELOPER FAILURE-STATE TEST")
+	dev_god_mode = previous_god
+	_dev_set_tool_status("GAME-OVER UI TRIGGERED")
+
+func _dev_recover_game_over() -> void:
+	if not game_over:
+		_dev_set_tool_status("GAME IS NOT CURRENTLY OVER")
+		return
+	dev_session_active = true
+	game_over = false
+	paused = false
+	get_tree().paused = false
+	approval = maxf(approval, 50.0)
+	chaos = minf(chaos, 25.0)
+	enemy_pressure = minf(enemy_pressure, 25.0)
+	if game_over_panel != null:
+		game_over_panel.visible = false
+	_reset_runtime_events()
+	_update_ui()
+	_dev_set_tool_status("GAME-OVER STATE CLEARED")
+
+func _dev_copy_file(source_path: String, destination_path: String) -> bool:
+	if not FileAccess.file_exists(source_path):
+		return false
+	var source := FileAccess.open(source_path, FileAccess.READ)
+	if source == null:
+		return false
+	var bytes := source.get_buffer(source.get_length())
+	var destination := FileAccess.open(destination_path, FileAccess.WRITE)
+	if destination == null:
+		return false
+	destination.store_buffer(bytes)
+	return true
+
+func _dev_backup_normal_files() -> void:
+	var save_ok := _dev_copy_file(SAVE_PATH, "user://savegame_dev_backup.json")
+	var settings_ok := _dev_copy_file(SETTINGS_PATH, "user://settings_dev_backup.json")
+	_dev_set_tool_status("BACKUP COMPLETE — SAVE:%s SETTINGS:%s" % ["OK" if save_ok else "MISSING", "OK" if settings_ok else "MISSING"])
+	_refresh_dev_runtime_ui()
+
+func _dev_restore_normal_files() -> void:
+	var save_ok := _dev_copy_file("user://savegame_dev_backup.json", SAVE_PATH)
+	var settings_ok := _dev_copy_file("user://settings_dev_backup.json", SETTINGS_PATH)
+	_dev_set_tool_status("BACKUP RESTORE — SAVE:%s SETTINGS:%s" % ["OK" if save_ok else "MISSING", "OK" if settings_ok else "MISSING"])
+	_refresh_dev_runtime_ui()
+
+func _dev_validate_save() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		_dev_set_tool_status("NORMAL SAVE DOES NOT EXIST")
+		return
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		_dev_set_tool_status("NORMAL SAVE COULD NOT BE OPENED")
+		return
+	var parsed := JSON.parse_string(file.get_as_text())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		_dev_set_tool_status("SAVE JSON INVALID")
+		return
+	var data := parsed as Dictionary
+	_dev_set_tool_status("SAVE JSON VALID — VERSION %s • LEVEL %d" % [str(data.get("version", "UNKNOWN")), int(data.get("current_level_index", 0)) + 1])
+
+func _dev_reload_normal_save() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		_dev_set_tool_status("NORMAL SAVE DOES NOT EXIST")
+		return
+	var was_started := game_started
+	if not _load_game():
+		_dev_set_tool_status("NORMAL SAVE FAILED TO LOAD")
+		return
+	dev_session_active = true
+	if was_started:
+		game_started = true
+		paused = false
+		game_over = false
+		get_tree().paused = false
+		_apply_current_level(true, false)
+		_update_ui()
+	_dev_set_tool_status("NORMAL SAVE RELOADED INTO PROTECTED DEV SESSION")
+
+func _dev_copy_debug_report() -> void:
+	DisplayServer.clipboard_set(_dev_debug_report())
+	_dev_set_tool_status("DEBUG REPORT COPIED TO CLIPBOARD")
+
+func _dev_dump_debug_report() -> void:
+	var file := FileAccess.open("user://trump_simulator_debug_report.txt", FileAccess.WRITE)
+	if file == null:
+		_dev_set_tool_status("COULD NOT WRITE DEBUG REPORT")
+		return
+	file.store_string(_dev_debug_report())
+	_dev_set_tool_status("DEBUG REPORT WRITTEN TO USER DATA FOLDER")
+
+func _dev_print_scene_tree() -> void:
+	get_tree().root.print_tree_pretty()
+	_dev_set_tool_status("SCENE TREE PRINTED TO GODOT OUTPUT")
+
+func _dev_open_user_data_folder() -> void:
+	var path := ProjectSettings.globalize_path("user://")
+	OS.shell_open(path)
+	_dev_set_tool_status("OPENED USER DATA FOLDER")
+
+func _dev_force_ui_refresh() -> void:
+	_refresh_stage_unlocks()
+	_update_ui()
+	_refresh_menu_backdrop()
+	_dev_set_tool_status("UI AND STAGE VISIBILITY REFRESHED")
+
+func _dev_refresh_lan_scan() -> void:
+	if OnlineMultiplayer.is_host:
+		_dev_set_tool_status("LAN HOST IS ACTIVE — DISCOVERY SCAN IS CLIENT-ONLY")
+		return
+	OnlineMultiplayer.refresh_lan_scan()
+	_dev_set_tool_status("LAN DISCOVERY REFRESH REQUESTED")
+
+func _dev_leave_lan_session() -> void:
+	OnlineMultiplayer.leave_session()
+	lan_match_session = false
+	_dev_set_tool_status("LAN SESSION CLOSED")
+
+func _dev_open_lan_browser() -> void:
+	if game_started:
+		_dev_set_tool_status("RETURN TO THE HOME MENU BEFORE OPENING THE LAN BROWSER")
+		return
+	_minimize_dev_panel()
+	if main_menu != null:
+		main_menu.visible = true
+	_open_multiplayer_menu()
+	_open_online_multiplayer()
 
 func _dev_start_multiplayer(mode_name: String, role_name: String) -> void:
-	if dev_panel != null:
-		dev_panel.visible = false
+	if game_started:
+		_dev_set_tool_status("RETURN TO THE HOME MENU BEFORE STARTING LOCAL PRACTICE")
+		return
+	_dev_mark_modified("MULTIPLAYER PRACTICE")
+	_minimize_dev_panel()
 	_start_multiplayer_preview(mode_name, role_name)
+
 
 func _build_difficulty_select_panel() -> void:
 	difficulty_select_panel = Panel.new()
