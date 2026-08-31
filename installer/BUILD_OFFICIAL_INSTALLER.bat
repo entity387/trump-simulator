@@ -209,10 +209,11 @@ echo [OK] Installer created.
 >>"%LOG%" echo OK: Installer created.
 
 rem =====================================================
-rem CREATE UPDATE.JSON
+rem CREATE UPDATE.JSON + R2 ZIP PACKAGE
 rem =====================================================
 echo.
-echo [4/4] Creating website update manifest...
+echo [4/4] Creating updater manifest and R2 release package...
+call "installer\RELEASE_URLS.bat"
 
 set "SETUP_SHA256="
 for /f "delims=" %%H in ('powershell.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 -LiteralPath 'release\TrumpSimulatorSetup.exe').Hash.ToLower()"') do set "SETUP_SHA256=%%H"
@@ -225,11 +226,11 @@ if not defined SETUP_SHA256 (
     exit /b 1
 )
 
->>"%LOG%" echo SHA256=%SETUP_SHA256%
+>>"%LOG%" echo INSTALLER_SHA256=%SETUP_SHA256%
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$notes=(Get-Content -Raw 'installer\UPDATE_NOTES.txt').Trim();" ^
-  "$manifest=[ordered]@{version='1.1.0';download_url='%TS_INSTALLER_URL%';sha256='%SETUP_SHA256%';required=$false;notes=$notes;published_at=(Get-Date).ToUniversalTime().ToString('o')};" ^
+  "$manifest=[ordered]@{version='1.1.0';download_url='%TS_PACKAGE_URL%';installer_filename='TrumpSimulatorSetup.exe';sha256='%SETUP_SHA256%';required=$false;notes=$notes;published_at=(Get-Date).ToUniversalTime().ToString('o')};" ^
   "$manifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 'release\update.json'" >>"%LOG%" 2>&1
 
 if errorlevel 1 (
@@ -241,10 +242,22 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "release\update.json" (
+if exist "release\%TS_PACKAGE_NAME%" del /q "release\%TS_PACKAGE_NAME%" >nul 2>nul
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Compress-Archive -Force -LiteralPath 'release\TrumpSimulatorSetup.exe','release\update.json' -DestinationPath 'release\%TS_PACKAGE_NAME%'" >>"%LOG%" 2>&1
+
+if errorlevel 1 (
     echo.
-    echo [ERROR] release\update.json was not created.
-    >>"%LOG%" echo ERROR: update.json missing.
+    echo [ERROR] Could not create release\%TS_PACKAGE_NAME%.
+    >>"%LOG%" echo ERROR: release ZIP creation failed.
+    pause
+    exit /b 1
+)
+
+if not exist "release\%TS_PACKAGE_NAME%" (
+    echo.
+    echo [ERROR] Release ZIP was not created.
+    >>"%LOG%" echo ERROR: release ZIP missing.
     pause
     exit /b 1
 )
@@ -254,16 +267,20 @@ if not exist "release\update.json" (
 
 echo.
 echo =====================================================
-echo   SUCCESS - TRUMP SIMULATOR 1.0 IS BUILT
+echo   SUCCESS - TRUMP SIMULATOR 1.1.0 IS BUILT
 echo =====================================================
 echo.
-echo Your official installer is:
+echo Website/R2 download package:
+echo   release\%TS_PACKAGE_NAME%
 echo.
+echo Standalone setup executable:
 echo   release\TrumpSimulatorSetup.exe
 echo.
-echo Your website updater file is:
-echo.
+echo Website updater manifest:
 echo   release\update.json
+echo.
+echo Upload the ZIP to the trump-simulator R2 bucket FIRST.
+echo Publish update.json to /updates/trump-simulator.json LAST.
 echo.
 echo BUILD_LOG.txt has also been saved for troubleshooting.
 echo.

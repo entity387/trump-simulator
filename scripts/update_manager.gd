@@ -5,6 +5,12 @@ signal update_status(message: String)
 
 const DEFAULT_VERSION := "1.1.0"
 const DEFAULT_MANIFEST_URL := "https://simulatedstudios.com/updates/trump-simulator.json"
+const DEFAULT_INSTALLER_FILENAME := "TrumpSimulatorSetup.exe"
+
+const SAVE_PATH := "user://savegame.json"
+const SETTINGS_PATH := "user://settings.json"
+const SAVE_BACKUP_PATH := "user://savegame.pre_update_backup.json"
+const SETTINGS_BACKUP_PATH := "user://settings.pre_update_backup.json"
 
 var available_update: Dictionary = {}
 var checking := false
@@ -90,9 +96,16 @@ func check_for_updates() -> void:
 func download_and_launch_update() -> bool:
 	if downloading or available_update.is_empty():
 		return false
+	if OS.get_name() != "Windows":
+		update_status.emit("AUTOMATIC UPDATES ARE CURRENTLY AVAILABLE ON WINDOWS ONLY.")
+		return false
 
 	var download_url := str(available_update.get("download_url", "")).strip_edges()
 	var expected_hash := str(available_update.get("sha256", "")).strip_edges().to_lower()
+	var installer_filename := str(available_update.get("installer_filename", DEFAULT_INSTALLER_FILENAME)).strip_edges()
+	if installer_filename.is_empty():
+		installer_filename = DEFAULT_INSTALLER_FILENAME
+
 	if not download_url.begins_with("https://") or not _valid_sha256(expected_hash):
 		update_status.emit("UPDATE INFORMATION IS INVALID.")
 		return false
@@ -100,13 +113,19 @@ func download_and_launch_update() -> bool:
 	downloading = true
 	update_status.emit("DOWNLOADING UPDATE...")
 
-	var temp_path := OS.get_temp_dir().path_join("TrumpSimulatorUpdate.exe")
-	if FileAccess.file_exists(temp_path):
-		DirAccess.remove_absolute(temp_path)
+	var url_without_query := str(download_url.split("?")[0])
+	var package_is_zip := url_without_query.to_lower().ends_with(".zip")
+	var temp_package := OS.get_temp_dir().path_join(
+		"TrumpSimulatorUpdate.zip" if package_is_zip else "TrumpSimulatorUpdate.exe"
+	)
+	var temp_installer := OS.get_temp_dir().path_join("TrumpSimulatorUpdateSetup.exe")
+
+	_remove_temp_file(temp_package)
+	_remove_temp_file(temp_installer)
 
 	var http := HTTPRequest.new()
-	http.timeout = 120.0
-	http.download_file = temp_path
+	http.timeout = 180.0
+	http.download_file = temp_package
 	add_child(http)
 
 	var error := http.request(download_url, PackedStringArray([
@@ -134,13 +153,30 @@ func download_and_launch_update() -> bool:
 		update_status.emit("THE UPDATE DOWNLOAD FAILED.")
 		return false
 
+	var installer_path := temp_package
+	if package_is_zip:
+		update_status.emit("PREPARING UPDATE...")
+		installer_path = _extract_installer_from_zip(temp_package, temp_installer, installer_filename)
+		if installer_path.is_empty():
+			_remove_temp_file(temp_package)
+			downloading = false
+			update_status.emit("THE UPDATE PACKAGE DID NOT CONTAIN A VALID INSTALLER.")
+			return false
+
 	update_status.emit("VERIFYING UPDATE...")
-	var actual_hash := FileAccess.get_sha256(temp_path).to_lower()
+	# The manifest hash verifies the actual installer executable. This lets the
+	# same manifest also be included inside the downloadable ZIP package.
+	var actual_hash := FileAccess.get_sha256(installer_path).to_lower()
 	if actual_hash.is_empty() or actual_hash != expected_hash:
-		DirAccess.remove_absolute(temp_path)
+		_remove_temp_file(temp_package)
+		if installer_path != temp_package:
+			_remove_temp_file(installer_path)
 		downloading = false
 		update_status.emit("UPDATE VERIFICATION FAILED. NOTHING WAS INSTALLED.")
 		return false
+
+	update_status.emit("BACKING UP SAVE...")
+	_backup_user_data()
 
 	update_status.emit("STARTING INSTALLER...")
 	var args := PackedStringArray([
@@ -150,7 +186,7 @@ func download_and_launch_update() -> bool:
 		"/CLOSEAPPLICATIONS",
 		"/NORESTARTAPPLICATIONS"
 	])
-	var pid := OS.create_process(temp_path, args)
+	var pid := OS.create_process(installer_path, args)
 	downloading = false
 
 	if pid <= 0:
@@ -158,6 +194,56 @@ func download_and_launch_update() -> bool:
 		return false
 
 	return true
+
+func _extract_installer_from_zip(zip_path: String, output_path: String, preferred_name: String) -> String:
+	var reader := ZIPReader.new()
+	if reader.open(zip_path) != OK:
+		return ""
+
+	var chosen_entry := ""
+	var first_exe := ""
+	for entry in reader.get_files():
+		if entry.ends_with("/"):
+			continue
+		var lower_entry := entry.to_lower()
+		if lower_entry.ends_with(".exe") and first_exe.is_empty():
+			first_exe = entry
+		if entry.get_file().to_lower() == preferred_name.to_lower():
+			chosen_entry = entry
+			break
+
+	if chosen_entry.is_empty():
+		chosen_entry = first_exe
+	if chosen_entry.is_empty():
+		reader.close()
+		return ""
+
+	var installer_bytes := reader.read_file(chosen_entry)
+	reader.close()
+	if installer_bytes.is_empty():
+		return ""
+
+	var output := FileAccess.open(output_path, FileAccess.WRITE)
+	if output == null:
+		return ""
+	output.store_buffer(installer_bytes)
+	output.close()
+	return output_path
+
+func _backup_user_data() -> void:
+	_backup_file(SAVE_PATH, SAVE_BACKUP_PATH)
+	_backup_file(SETTINGS_PATH, SETTINGS_BACKUP_PATH)
+
+func _backup_file(source_path: String, backup_path: String) -> void:
+	if not FileAccess.file_exists(source_path):
+		return
+	var source_absolute := ProjectSettings.globalize_path(source_path)
+	var backup_absolute := ProjectSettings.globalize_path(backup_path)
+	DirAccess.copy_absolute(source_absolute, backup_absolute)
+
+func _remove_temp_file(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
 
 func _valid_sha256(value: String) -> bool:
 	if value.length() != 64:

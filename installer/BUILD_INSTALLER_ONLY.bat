@@ -26,15 +26,29 @@ if not exist "release" mkdir "release"
 if errorlevel 1 exit /b 1
 
 for /f "delims=" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 -LiteralPath 'release\TrumpSimulatorSetup.exe').Hash.ToLower()"') do set "SETUP_SHA256=%%H"
+if not defined SETUP_SHA256 (
+    echo [ERROR] Could not calculate installer SHA-256.
+    pause
+    exit /b 1
+)
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$notes=(Get-Content -Raw 'installer\UPDATE_NOTES.txt').Trim();" ^
-  "$manifest=[ordered]@{version='1.1.0';download_url='%TS_INSTALLER_URL%';sha256='%SETUP_SHA256%';required=$false;notes=$notes;published_at=(Get-Date).ToUniversalTime().ToString('o')};" ^
+  "$manifest=[ordered]@{version='1.1.0';download_url='%TS_PACKAGE_URL%';installer_filename='TrumpSimulatorSetup.exe';sha256='%SETUP_SHA256%';required=$false;notes=$notes;published_at=(Get-Date).ToUniversalTime().ToString('o')};" ^
   "$manifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 'release\update.json'"
+if errorlevel 1 exit /b 1
+
+if exist "release\%TS_PACKAGE_NAME%" del /q "release\%TS_PACKAGE_NAME%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Compress-Archive -Force -LiteralPath 'release\TrumpSimulatorSetup.exe','release\update.json' -DestinationPath 'release\%TS_PACKAGE_NAME%'"
+if errorlevel 1 exit /b 1
 
 echo.
 echo Created:
 echo   release\TrumpSimulatorSetup.exe
 echo   release\update.json
+echo   release\%TS_PACKAGE_NAME%
+echo.
+echo Upload the ZIP to the R2 bucket and publish update.json on simulatedstudios.com.
 echo.
 pause

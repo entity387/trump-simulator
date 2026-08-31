@@ -1,8 +1,9 @@
 {
-  "version": "1.0.0",
-  "download_url": "https://downloads.simulatedstudios.com/trump-simulator/TrumpSimulatorSetup.exe",
-  "sha256": "REPLACED_AUTOMATICALLY_BY_BUILD_SCRIPT",
+  "version": "1.1.0",
+  "download_url": "https://download.simulatedstudios.com/TrumpSimulator-1.1.0-Windows-Installer.zip",
+  "installer_filename": "TrumpSimulatorSetup.exe",
+  "sha256": "SHA256_OF_TRUMPSIMULATORSETUP_EXE",
   "required": false,
-  "notes": "Trump Simulator 1.0 official release.",
+  "notes": "Trump Simulator update notes.",
   "published_at": "generated-at-build-time"
 }

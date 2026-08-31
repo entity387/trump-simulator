@@ -1,17 +1,19 @@
 TRUMP SIMULATOR RELEASE UPLOAD
 
-After running installer\BUILD_OFFICIAL_INSTALLER.bat, upload:
+Cloudflare R2 bucket: trump-simulator
+Public R2 custom domain: https://download.simulatedstudios.com
 
-1. release\TrumpSimulatorSetup.exe
-   -> https://downloads.simulatedstudios.com/trump-simulator/TrumpSimulatorSetup.exe
+After running installer\BUILD_OFFICIAL_INSTALLER.bat, upload in this order:
+
+1. release\TrumpSimulator-1.1.0-Windows-Installer.zip
+   -> R2 object: TrumpSimulator-1.1.0-Windows-Installer.zip
+   -> https://download.simulatedstudios.com/TrumpSimulator-1.1.0-Windows-Installer.zip
 
 2. release\update.json
    -> https://simulatedstudios.com/updates/trump-simulator.json
 
-IMPORTANT:
-Upload the installer FIRST, then update.json LAST.
-
-Why?
-As soon as update.json advertises a newer version, installed games may begin
-downloading the installer URL. Uploading the manifest last ensures the new
-installer already exists before players are notified.
+IMPORTANT: upload the R2 ZIP FIRST, then publish update.json LAST.
+The SHA-256 in update.json is the hash of TrumpSimulatorSetup.exe inside the ZIP.
+The game downloads the ZIP, extracts the setup executable, verifies that executable,
+backs up save/settings data, then starts the installer. Saves live under Godot user://
+and are not stored in the program installation folder.

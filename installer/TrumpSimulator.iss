@@ -59,5 +59,8 @@ Name: "{autodesktop}\Trump Simulator"; Filename: "{app}\{#MyAppExeName}"; Workin
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Trump Simulator"; Flags: nowait postinstall skipifsilent
 
+; User saves are stored by Godot under user:// (Windows AppData).
+; Never add an AppData/user-data deletion rule here; updates/reinstalls must preserve progress.
+
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\legal"
